@@ -4,10 +4,10 @@
 about:
   app_name: "Personal AI OS"
   version: "2.0.0"
-  author: "Personal AI OS Team"
-  license: "MIT"
-  repository: "https://github.com/username/personal-ai-os-v2"
-  description: "运行于 Android Termux 的个人 AI 操作系统"
+  author: "qixidalao"
+  license: "GPL-3.0"
+  repository: "https://github.com/qixidalao/personal-ai-os-v2"
+  description: "个人 AI 工作台与本地智能中枢"
   motto: "万物皆配置 · 万物皆事件 · 万物皆插件 · 万物皆流"
   tech_stack:
     frontend: "Vue 3 + TypeScript + Vite"

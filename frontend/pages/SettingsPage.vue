@@ -159,14 +159,68 @@
         </div>
         <div v-if="activeTab === 'about'" class="set-section">
           <h3 class="set-title">ℹ️ 关于与数据主权</h3>
+
+          <!-- 项目信息 -->
           <div class="set-card">
-            <div class="set-card-header">存储统计</div>
+            <div class="set-card-header">🚀 Personal AI OS (hhs)</div>
             <div class="set-body">
-              <div class="set-stat-row"><span>本地数据</span><span>{{ storageUsed }}MB / 1024MB</span></div>
-              <div class="set-stat-row"><span>会话数量</span><span>{{ sessionCount }}</span></div>
-              <div class="set-stat-row"><span>缓存大小</span><span>128MB</span></div>
+              <div class="about-info-grid">
+                <div class="about-info-item">
+                  <span class="about-info-label">版本</span>
+                  <span class="about-info-value">v2.0.0</span>
+                </div>
+                <div class="about-info-item">
+                  <span class="about-info-label">协议</span>
+                  <a class="about-info-value about-link" href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPL-3.0 ↗</a>
+                </div>
+                <div class="about-info-item">
+                  <span class="about-info-label">仓库</span>
+                  <a class="about-info-value about-link" href="https://github.com/qixidalao/personal-ai-os-v2" target="_blank" rel="noopener">GitHub ↗</a>
+                </div>
+                <div class="about-info-item">
+                  <span class="about-info-label">作者</span>
+                  <span class="about-info-value">qixidalao</span>
+                </div>
+              </div>
+              <div class="about-desc">{{ aboutDesc }}</div>
+              <div class="about-motto">{{ aboutMotto }}</div>
             </div>
           </div>
+
+          <!-- 技术栈 -->
+          <div class="set-card">
+            <div class="set-card-header">🧰 技术栈</div>
+            <div class="set-body">
+              <div class="about-tech-grid">
+                <div v-for="(v, k) in techStack" :key="k" class="about-tech-item">
+                  <span class="about-tech-key">{{ k }}</span>
+                  <span class="about-tech-val">{{ v }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 存储统计 -->
+          <div class="set-card">
+            <div class="set-card-header">💾 存储统计</div>
+            <div class="set-body">
+              <div class="set-stat-row"><span>本地数据</span><span>{{ storageUsed }}MB / {{ storageTotal }}MB</span></div>
+              <div class="set-stat-row"><span>会话数量</span><span>{{ sessionCount }}</span></div>
+              <div class="set-stat-row"><span>缓存大小</span><span>{{ cacheSize }}MB</span></div>
+            </div>
+          </div>
+
+          <!-- 特别感谢 -->
+          <div class="set-card" v-if="specialThanks.length">
+            <div class="set-card-header">🙏 特别感谢</div>
+            <div class="set-body">
+              <div class="about-thanks-list">
+                <span v-for="(name, i) in specialThanks" :key="i" class="about-thanks-tag">{{ name }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 数据核弹 -->
           <div class="set-card" style="margin-top: 12px; border-color: var(--error)">
             <div class="set-card-header" style="color: var(--error)">⚠️ 数据核弹</div>
             <div class="set-body">
@@ -174,6 +228,8 @@
               <button class="set-danger-btn" @click="showNuke = true">💣 重置所有设置</button>
             </div>
           </div>
+
+          <!-- 开发者模式 -->
           <div class="set-card" style="margin-top: 12px">
             <div class="set-card-header">🛠️ 开发者模式</div>
             <div class="set-body">
@@ -235,6 +291,24 @@ async function apiPut(path: string, body: any) {
   if (!r.ok) throw new Error(await responseError(r, `PUT ${path} ${r.status}`))
   return r.json()
 }
+const storageUsed = ref(256)
+const storageTotal = ref(1024)
+const sessionCount = ref(0)
+const cacheSize = ref(128)
+const devMode = ref(false)
+const showNuke = ref(false)
+const loadingSettings = ref(true)
+
+// 关于面板数据
+const aboutDesc = '个人 AI 工作台与本地智能中枢 — 聊天、Agent、工具、记忆、插件一体化'
+const aboutMotto = '万物皆配置 · 万物皆事件 · 万物皆插件 · 万物皆流'
+const techStack = {
+  '前端': 'Vue 3 + TypeScript + Vite',
+  '后端': 'Python 3.11+ / FastAPI',
+  'UI': '自绘组件库',
+  '流式': 'Server-Sent Events (SSE)',
+}
+const specialThanks = ['Termux 社区', 'FastAPI', 'Vue.js', 'OpenAI']
 
 async function apiPost(path: string, body: any = {}) {
   const r = await fetch(`${API}${path}`, {
@@ -292,11 +366,6 @@ function onInputCustom(val: string) {
   const num = parseInt(val, 10)
   if (!isNaN(num) && num >= 0) { displayLimitCustom.value = num; displayLimit.value = num; autoSave() }
 }
-const storageUsed = ref(256)
-const sessionCount = ref(0)
-const devMode = ref(false)
-const showNuke = ref(false)
-const loadingSettings = ref(true)
 
 const editingToolIdx = ref<number | null>(null)
 const editingToolDesc = ref('')
@@ -509,4 +578,5 @@ onUnmounted(() => { window.removeEventListener('resize', onResize); if (saveTime
 .set-modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
 .set-btn{padding:8px 16px!important;border-radius:6px!important;font-size:13px!important;border:none!important;cursor:pointer}.set-btn:disabled{opacity:.6;cursor:not-allowed}.ai-btn--ghost{background:var(--surface-alt);color:var(--text2)}.ai-btn--primary{background:var(--primary);color:#fff}
 @media (max-width: 767px){.set-content{padding:12px}.set-section{max-width:none}.set-modal{max-width:100%}.set-inline-row{flex-direction:column;align-items:stretch}.set-refresh-btn{height:32px}}
+.about-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}.about-info-item{display:flex;flex-direction:column;gap:2px;padding:8px 10px;background:var(--surface-alt);border-radius:6px}.about-info-label{font-size:11px;color:var(--text3)}.about-info-value{font-size:14px;font-weight:600;color:var(--text)}.about-link{color:var(--primary);text-decoration:none;cursor:pointer}.about-link:hover{text-decoration:underline}.about-desc{font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:6px}.about-motto{font-size:12px;color:var(--text3);font-style:italic}.about-tech-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.about-tech-item{display:flex;flex-direction:column;gap:1px;padding:6px 8px;background:var(--surface-alt);border-radius:4px}.about-tech-key{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}.about-tech-val{font-size:12px;color:var(--text)}.about-thanks-list{display:flex;flex-wrap:wrap;gap:6px}.about-thanks-tag{padding:4px 10px;border-radius:12px;background:var(--surface-alt);font-size:12px;color:var(--text2);border:1px solid var(--border-light)}
 </style>
