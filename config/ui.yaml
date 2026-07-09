@@ -1,0 +1,33 @@
+# ============================================================
+# UI 配置
+# ============================================================
+ui:
+  sidebar:
+    width: 280
+    collapsed_width: 64
+    collapsible: true
+    animate: true
+
+  chat:
+    max_width: 960
+    bubble_radius: 12
+    show_timestamp: true
+    show_avatar: true
+    typing_indicator: true
+    smooth_scroll: true
+
+  workspace:
+    default_tab: "markdown"
+    show_toolbar: true
+    auto_save: true
+    auto_save_interval: 30000
+
+  animation:
+    enabled: true
+    duration: 200
+    easing: "ease-in-out"
+
+  toast:
+    duration: 3000
+    max_visible: 3
+    position: "top-right"

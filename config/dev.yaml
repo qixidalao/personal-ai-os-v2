@@ -1,0 +1,17 @@
+# ============================================================
+# 开发模式配置
+# ============================================================
+dev:
+  enabled: false
+  hot_reload: true
+  show_component_bounds: false
+  log_level: "DEBUG"
+  mock_llm: false
+  mock_tools: false
+  inspect_events: true
+  performance_monitor: true
+  component_inspector: false
+  db_query_log: false
+  api_doc_auto_generate: true
+  storybook: false
+  theme_playground: false

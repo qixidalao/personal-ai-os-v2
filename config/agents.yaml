@@ -1,0 +1,36 @@
+# ============================================================
+# Agent 配置
+# ============================================================
+agents:
+  default: "general"
+  current: "general"
+  max_iterations: 25
+  max_tool_calls: 50
+
+  list:
+    - id: "general"
+      name: "通用 Agent"
+      description: "执行多种任务的通用智能体"
+      model: "gpt-4o"
+      prompt: "default"
+      tools: ["filesystem", "shell", "python", "search", "browser"]
+      max_iterations: 25
+      max_tool_calls: 50
+
+    - id: "coder"
+      name: "编程 Agent"
+      description: "专注于编程任务的智能体"
+      model: "deepseek-chat"
+      prompt: "coding"
+      tools: ["filesystem", "shell", "python", "git"]
+      max_iterations: 50
+      max_tool_calls: 100
+
+    - id: "researcher"
+      name: "研究员 Agent"
+      description: "深度研究型智能体"
+      model: "gpt-4o"
+      prompt: "default"
+      tools: ["search", "browser", "filesystem"]
+      max_iterations: 30
+      max_tool_calls: 60

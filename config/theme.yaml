@@ -1,0 +1,58 @@
+# ============================================================
+# 主题配置
+# ============================================================
+theme:
+  current: "dark"
+
+  dark:
+    primary: "#7c3aed"
+    secondary: "#6366f1"
+    accent: "#f59e0b"
+    background: "#0f172a"
+    surface: "#1e293b"
+    surface_alt: "#334155"
+    text: "#f1f5f9"
+    text_secondary: "#94a3b8"
+    border: "#334155"
+    error: "#ef4444"
+    warning: "#f59e0b"
+    success: "#22c55e"
+    info: "#3b82f6"
+    chat:
+      user_bubble: "#7c3aed"
+      assistant_bubble: "#1e293b"
+      system_bubble: "#334155"
+      thinking: "#f59e0b"
+      tool: "#6366f1"
+      observation: "#22c55e"
+      error: "#ef4444"
+
+  light:
+    primary: "#7c3aed"
+    secondary: "#6366f1"
+    accent: "#f59e0b"
+    background: "#ffffff"
+    surface: "#f8fafc"
+    surface_alt: "#e2e8f0"
+    text: "#0f172a"
+    text_secondary: "#64748b"
+    border: "#e2e8f0"
+    error: "#ef4444"
+    warning: "#f59e0b"
+    success: "#22c55e"
+    info: "#3b82f6"
+    chat:
+      user_bubble: "#7c3aed"
+      assistant_bubble: "#f1f5f9"
+      system_bubble: "#e2e8f0"
+      thinking: "#f59e0b"
+      tool: "#6366f1"
+      observation: "#22c55e"
+      error: "#ef4444"
+
+  font:
+    family: "'JetBrains Mono', 'Noto Sans SC', monospace"
+    size: 14
+    line_height: 1.6
+    code_family: "'JetBrains Mono', 'Fira Code', monospace"
+    code_size: 13

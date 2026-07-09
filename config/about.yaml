@@ -1,0 +1,23 @@
+# ============================================================
+# 关于信息
+# ============================================================
+about:
+  app_name: "Personal AI OS"
+  version: "2.0.0"
+  author: "Personal AI OS Team"
+  license: "MIT"
+  repository: "https://github.com/username/personal-ai-os-v2"
+  description: "运行于 Android Termux 的个人 AI 操作系统"
+  motto: "万物皆配置 · 万物皆事件 · 万物皆插件 · 万物皆流"
+  tech_stack:
+    frontend: "Vue 3 + TypeScript + Vite"
+    backend: "Python 3.11+ / FastAPI"
+    runtime: "OpenAI SDK / LangChain"
+    database: "SQLite / ChromaDB"
+    ui: "自绘组件库 (Custom UI Kit)"
+    streaming: "Server-Sent Events (SSE)"
+  special_thanks:
+    - "Termux 社区"
+    - "FastAPI"
+    - "Vue.js"
+    - "OpenAI"

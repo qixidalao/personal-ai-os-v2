@@ -1,0 +1,42 @@
+# ============================================================
+# RAG 配置
+# ============================================================
+rag:
+  enabled: true
+  chunk_size: 512
+  chunk_overlap: 64
+  top_k: 5
+  rerank_top_k: 3
+  embedding_model: "text-embedding-ada-002"
+  search_mode: "hybrid"
+
+  loader:
+    supported_formats:
+      - .txt
+      - .md
+      - .pdf
+      - .docx
+      - .csv
+      - .json
+      - .html
+
+  chunk:
+    strategy: "recursive"
+    separators: ["\n\n", "\n", "。", ".", " ", ""]
+
+  embedding:
+    provider: "openai"
+    model: "text-embedding-ada-002"
+    dimension: 1536
+    batch_size: 20
+
+  search:
+    method: "hybrid"
+    alpha: 0.5
+    bm25_k1: 1.5
+    bm25_b: 0.75
+
+  ranking:
+    enabled: true
+    model: "gpt-4o-mini"
+    min_score: 0.3

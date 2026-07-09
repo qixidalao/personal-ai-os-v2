@@ -1,0 +1,36 @@
+# ============================================================
+# 记忆配置
+# ============================================================
+memory:
+  enabled: true
+
+  session_memory:
+    enabled: true
+    max_messages: 100
+    summary_threshold: 50
+
+  conversation_summary:
+    enabled: true
+    model: "gpt-4o-mini"
+    interval: 10
+    max_summary_length: 500
+
+  long_memory:
+    enabled: true
+    storage: "sqlite"
+    db_path: "storage/sqlite/memory.db"
+    max_items: 1000
+
+  vector_memory:
+    enabled: true
+    dimension: 1536
+    similarity: "cosine"
+    top_k: 5
+    embedding_model: "text-embedding-ada-002"
+    db_path: "storage/vector/memories.db"
+
+  fact_memory:
+    enabled: true
+    extract_model: "gpt-4o-mini"
+    max_facts: 500
+    db_path: "storage/sqlite/facts.db"

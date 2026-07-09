@@ -1,0 +1,55 @@
+# ============================================================
+# 模型配置
+# ============================================================
+models:
+  default: "gpt-4o"
+  default_provider: "openai"
+
+  list:
+    - id: "gpt-4o"
+      provider: "openai"
+      name: "GPT-4o"
+      context_length: 128000
+      max_tokens: 4096
+      supports_vision: true
+      supports_functions: true
+      supports_streaming: true
+      pricing:
+        input: 2.50
+        output: 10.00
+
+    - id: "gpt-4o-mini"
+      provider: "openai"
+      name: "GPT-4o Mini"
+      context_length: 128000
+      max_tokens: 16384
+      supports_vision: true
+      supports_functions: true
+      supports_streaming: true
+      pricing:
+        input: 0.15
+        output: 0.60
+
+    - id: "deepseek-chat"
+      provider: "deepseek"
+      name: "DeepSeek V2"
+      context_length: 128000
+      max_tokens: 4096
+      supports_vision: false
+      supports_functions: true
+      supports_streaming: true
+      pricing:
+        input: 0.14
+        output: 0.28
+
+    - id: "qwen-max"
+      provider: "qwen"
+      name: "通义千问 Max"
+      context_length: 32000
+      max_tokens: 8192
+      supports_vision: true
+      supports_functions: true
+      supports_streaming: true
+      pricing:
+        input: 0.04
+        output: 0.12

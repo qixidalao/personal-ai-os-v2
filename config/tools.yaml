@@ -1,0 +1,90 @@
+# ============================================================
+# 工具配置
+# ============================================================
+tools:
+  enabled:
+    - filesystem
+    - shell
+    - python
+    - search
+    - browser
+    - markdown
+
+  disabled: []
+
+  order:
+    - filesystem
+    - shell
+    - python
+    - search
+    - browser
+    - sqlite
+    - git
+    - image
+    - audio
+    - pdf
+    - markdown
+    - clipboard
+    - camera
+    - gallery
+    - workflow
+    - termux
+    - mcp
+    - custom
+
+  filesystem:
+    enabled: true
+    allow_paths: ["/storage", "/data/data/com.termux/files/home"]
+    max_file_size_mb: 50
+
+  shell:
+    enabled: true
+    allowed_commands: ["python", "node", "npm", "git", "ls", "cat", "echo", "mkdir", "cp", "mv", "rm", "grep", "find"]
+    timeout: 30
+
+  python:
+    enabled: true
+    timeout: 60
+    allow_imports: true
+
+  search:
+    enabled: true
+    engine: "duckduckgo"
+    max_results: 10
+
+  browser:
+    enabled: true
+    timeout: 30
+    viewport_width: 1280
+    viewport_height: 720
+
+  sqlite:
+    enabled: true
+    db_path: "storage/sqlite/tools.db"
+
+  git:
+    enabled: true
+    timeout: 30
+
+  image:
+    enabled: true
+    max_size_mb: 20
+
+  audio:
+    enabled: true
+    max_duration_sec: 300
+
+  pdf:
+    enabled: true
+    max_pages: 100
+
+  markdown:
+    enabled: true
+    render_html: true
+
+  termux:
+    enabled: true
+    allow_notification: true
+    allow_tts: true
+    allow_battery_status: true
+    allow_clipboard: true

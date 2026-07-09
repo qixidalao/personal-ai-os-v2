@@ -1,0 +1,16 @@
+/* ============================================
+   Personal AI OS — 自定义滚动条
+   ============================================ */
+
+/* 薄滚动条 */
+.scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
+
+/* 隐藏滚动条（hover 显示） */
+.scrollbar-auto {
+  scrollbar-width: thin;
+}
+
+.scrollbar-auto::-webkit-scrollbar { width: 0; height: 0; }
+.scrollbar-auto:hover::-webkit-scrollbar { width: 6px; height: 6px; }
+.scrollbar-auto::-webkit-scrollbar-thumb { background: var(--surface-alt); border-radius: 3px; }
+.scrollbar-auto::-webkit-scrollbar-track { background: transparent; }

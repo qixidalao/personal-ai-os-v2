@@ -1,0 +1,73 @@
+# ============================================================
+# API 配置
+# ============================================================
+api:
+  current_provider: "openai"
+  base_url: ""
+  timeout: 60
+  max_retries: 3
+  retry_delay: 1.0
+  streaming: true
+  max_tokens_default: 4096
+  temperature_default: 0.7
+
+  providers:
+    openai:
+      enabled: true
+      base_url: "https://api.openai.com/v1"
+      api_key: ""
+      models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"]
+
+    claude:
+      enabled: false
+      base_url: "https://api.anthropic.com/v1"
+      api_key: ""
+      models: ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"]
+
+    gemini:
+      enabled: false
+      base_url: "https://generativelanguage.googleapis.com/v1"
+      api_key: ""
+      models: ["gemini-pro", "gemini-pro-vision"]
+
+    deepseek:
+      enabled: false
+      base_url: "https://api.deepseek.com/v1"
+      api_key: ""
+      models: ["deepseek-chat", "deepseek-coder"]
+
+    qwen:
+      enabled: false
+      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      api_key: ""
+      models: ["qwen-max", "qwen-plus", "qwen-turbo"]
+
+    ollama:
+      enabled: false
+      base_url: "http://localhost:11434/v1"
+      api_key: ""
+      models: ["llama3", "mistral", "qwen2"]
+
+    lm_studio:
+      enabled: false
+      base_url: "http://localhost:1234/v1"
+      api_key: ""
+      models: []
+
+    openrouter:
+      enabled: false
+      base_url: "https://openrouter.ai/api/v1"
+      api_key: ""
+      models: []
+
+    siliconflow:
+      enabled: false
+      base_url: "https://api.siliconflow.cn/v1"
+      api_key: ""
+      models: []
+
+    custom:
+      enabled: false
+      base_url: ""
+      api_key: ""
+      models: []

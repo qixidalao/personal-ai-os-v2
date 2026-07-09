@@ -1,0 +1,32 @@
+# ============================================================
+# 插件配置
+# ============================================================
+plugins:
+  enabled: []
+  disabled: []
+  auto_load: false
+  allow_community: true
+  allow_local: true
+  max_plugins: 50
+
+  builtin:
+    - id: "calculator"
+      name: "计算器"
+      version: "1.0.0"
+      enabled: true
+    - id: "datetime"
+      name: "日期时间"
+      version: "1.0.0"
+      enabled: true
+    - id: "weather"
+      name: "天气查询"
+      version: "1.0.0"
+      enabled: false
+
+  community:
+    # 从社区市场安装的插件列表
+    install_path: "plugins/community"
+
+  local:
+    # 本地自定义插件
+    install_path: "plugins/local"

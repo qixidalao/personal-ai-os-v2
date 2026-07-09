@@ -1,0 +1,677 @@
+<template>
+  <div class="chat-page">
+    <div class="chat-msgs" ref="msgBox" @scroll.passive="onChatScroll">
+      <div v-if="allMsgs.length === 0" class="chat-empty">
+        <div class="chat-empty__icon">🧠</div>
+        <div class="chat-empty__title">Personal AI OS</div>
+        <div class="chat-empty__hint">V2.0 · 思考流 / 工具流收纳盒 · 移动端优先</div>
+        <div class="chat-chips">
+          <button class="chat-chip" v-for="c in suggestions" :key="c" @click="handleSend(c)">{{ c }}</button>
+        </div>
+      </div>
+
+      <div v-if="displayLimit > 0 && allMsgs.length > displayLimit" class="chat-load-more" @click="loadMore">
+        ↑ 加载更早的消息（共 {{ allMsgs.length }} 条，已加载 {{ Math.min(displayLimit, allMsgs.length) }} 条）
+      </div>
+
+      <template v-for="m in msgs" :key="m.id">
+        <div v-if="m.toolCall" :class="['tool-card', { expanded: m.toolExpanded }]" @click="m.toolExpanded = !m.toolExpanded">
+          <div class="tool-card__header">
+            <span class="tool-card__icon">🔧</span>
+            <span class="tool-card__name">{{ m.toolCall.name }}</span>
+            <span v-if="m.toolCall.running" class="tool-card__status">执行中...</span>
+            <span v-else class="tool-card__status done">✓ 完成</span>
+            <span class="tool-card__arrow">{{ m.toolExpanded ? '▾' : '▸' }}</span>
+          </div>
+          <div v-if="m.toolExpanded" class="tool-card__body">
+            <div class="tool-card__section">
+              <div class="tool-card__label">入参 (Input)</div>
+              <pre class="tool-card__code">{{ JSON.stringify(m.toolCall.args, null, 2) }}</pre>
+            </div>
+            <div class="tool-card__section">
+              <div class="tool-card__label">返回 (Output)</div>
+              <pre class="tool-card__code">{{ m.toolCall.result || '(执行中...)' }}</pre>
+            </div>
+          </div>
+        </div>
+
+        <div :class="['msg', m.role === 'user' ? 'msg--user' : 'msg--ai']">
+          <div class="msg__avatar">{{ m.role === 'user' ? '👤' : '🤖' }}</div>
+          <div class="msg__body">
+            <template v-if="m.role === 'ai' && m.segments?.length">
+              <template v-for="(seg, si) in m.segments" :key="seg.id || si">
+                <div v-if="seg.type === 'reasoning'" :data-seg-id="seg.id" class="trace-box trace-seg think-seg">
+                  <button class="trace-head" @click="toggleSegment(m, seg)">
+                    <span class="trace-title">{{ seg.expanded ? '▾' : '▸' }} 🧠 思考流</span>
+                    <span class="trace-pill think">{{ seg.active ? '思考中' : '已完成' }}</span>
+                  </button>
+                  <Transition name="trace-slide">
+                    <div v-if="seg.expanded" class="trace-body"><div class="trace-reason" v-html="renderMarkdown(seg.content || '')"></div></div>
+                  </Transition>
+                </div>
+                <div v-else-if="seg.type === 'tool'" :data-seg-id="seg.id" class="trace-box trace-seg tool-seg">
+                  <button class="trace-head" @click="toggleSegment(m, seg)">
+                    <span class="trace-title">{{ seg.expanded ? '▾' : '▸' }} 🔧 工具流</span>
+                    <span class="trace-pill tool">{{ seg.tools?.length || 0 }} 次调用</span>
+                    <span v-if="seg.active" class="trace-live">执行中</span>
+                  </button>
+                  <Transition name="trace-slide">
+                    <div v-if="seg.expanded" class="trace-body">
+                    <div class="trace-tools-list">
+                      <div v-for="(t, ti) in seg.tools" :key="t.id || ti" :data-tool-id="t.id" :class="['trace-tool', { open: t.expanded }]">
+                        <button class="trace-tool__head" @click.stop="toggleToolEntry(t)">
+                          <span class="trace-tool__arrow">{{ t.expanded ? '▾' : '▸' }}</span>
+                          <span class="trace-tool__name">{{ toolTitle(t) }}</span>
+                          <span class="trace-tool__summary">{{ toolSummary(t) }}</span>
+                          <span :class="['trace-tool__state', t.running ? 'running' : (t.ok === false ? 'bad' : 'ok')]">{{ t.running ? '执行中' : (t.ok === false ? '失败' : '完成') }}</span>
+                          <span v-if="typeof t.durationMs === 'number'" class="trace-tool__time">{{ t.durationMs }}ms</span>
+                        </button>
+                        <div v-if="t.expanded" class="trace-tool__body">
+                          <div class="trace-mini-title">入参</div><pre class="trace-code">{{ formatJson(t.args) }}</pre>
+                          <div class="trace-mini-title">输出</div><pre class="trace-code">{{ t.running ? '(执行中...)' : (t.result || t.error || '(空)') }}</pre>
+                        </div>
+                      </div>
+                    </div>
+                    </div>
+                  </Transition>
+                </div>
+                <div v-else class="msg__bubble">
+                  <div class="msg__text" :key="'seg-' + (m.streaming ? Math.floor((seg.content||'').length / 8) : 'done')" v-html="renderMarkdown(seg.content || '')"></div>
+                  <span v-if="m.streaming && si === m.segments.length - 1" class="msg__cursor"></span>
+                </div>
+              </template>
+            </template>
+            <div v-else class="msg__bubble">
+              <div class="msg__text" :key="m.streaming ? Math.floor((m.content||'').length / 8) : 'done'" v-html="renderMarkdown(m.content)"></div>
+              <span v-if="m.streaming" class="msg__cursor"></span>
+            </div>
+            <div v-if="!m.streaming" class="msg__actions">
+              <button class="msg__act" @click="copyMsg(m, $event)" title="复制">📋</button>
+              <button class="msg__act" @click="deleteMsg(m)" title="删除此后所有消息">🗑️</button>
+              <button v-if="m.role === 'ai'" class="msg__act" @click="retryMsg(m)" title="重试">🔄</button>
+              <button v-if="m.role === 'user'" class="msg__act" @click="editMsg(m)" title="编辑">✏️</button>
+            </div>
+            <div v-if="m.branches && m.branches.length > 1" class="msg__branch">
+              <span class="msg__branch-hint">分支 &lt;{{ (m.branchIdx || 0) + 1 }}/{{ m.branches.length }}&gt;</span>
+              <span class="msg__branch-nav">
+                <button :disabled="(m.branchIdx || 0) === 0" @click="prevBranch(m)">‹</button>
+                <button :disabled="(m.branchIdx || 0) >= m.branches.length - 1" @click="nextBranch(m)">›</button>
+              </span>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <div class="chat-input-wrap">
+      <div v-if="attachments.length" class="chat-files">
+        <div v-for="(f, i) in attachments" :key="i" class="chat-file">
+          <span>{{ f.name }}</span>
+          <button class="chat-file__rm" @click="attachments.splice(i, 1)">✕</button>
+        </div>
+      </div>
+      <div class="chat-input-area">
+        <div v-if="editingMsg" class="chat-edit-bar">
+          <span class="chat-edit-hint">✏️ 编辑中</span>
+          <button class="chat-edit-cancel" @click="cancelEdit">取消</button>
+        </div>
+        <div class="chat-input-row">
+          <textarea ref="inputRef" v-model="input" class="chat-input" placeholder="输入消息... / 斜杠命令" rows="1" @keydown="handleKey" @input="autoSize" @paste="handlePaste" />
+          <button v-if="!loading" :class="['chat-send', { disabled: !input.trim() }]" @click="handleSend()"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9Z"/></svg></button>
+          <button v-else class="chat-send stop" @click="stopGen" title="停止生成"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+        </div>
+      </div>
+      <div class="chat-hints">
+        <span class="chat-hint">{{ isMobile ? '移动端 Enter 换行 · 🚀 发送' : 'Enter 发送 · Shift+Enter 换行' }}</span>
+        <span class="chat-hint" v-if="currentModel">模型：{{ currentModel }}</span>
+        <span v-if="apiError" class="chat-hint err">{{ apiError }}</span>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, nextTick, inject, watch, onMounted, onUnmounted, computed } from 'vue'
+import { marked } from 'marked'
+import hljs from 'highlight.js'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
+
+marked.use({ gfm: true, breaks: true })
+interface ChatSegment { id: string; type: 'reasoning' | 'tool' | 'text'; content?: string; tools?: TraceTool[]; expanded?: boolean; active?: boolean; userToggled?: boolean }
+type Role = 'user' | 'ai'
+interface ToolCall { name: string; args: any; result?: string; running?: boolean }
+interface TraceTool { id?: string; round?: number; name: string; args?: any; result?: string; ok?: boolean; error?: string; durationMs?: number; expanded?: boolean; running?: boolean; userToggled?: boolean }
+interface ChatSegment { id: string; type: 'reasoning' | 'tool' | 'text'; content?: string; tools?: TraceTool[]; expanded?: boolean; active?: boolean; userToggled?: boolean }
+interface Message {
+  id: string; role: Role; content: string; streaming?: boolean
+  branches?: string[]; branchIdx?: number; toolCall?: ToolCall; toolExpanded?: boolean
+  reasoning?: string; tools?: TraceTool[]; traceExpanded?: boolean; reasoningExpanded?: boolean; toolsExpanded?: boolean; segments?: ChatSegment[]
+}
+interface MathBlock { placeholder: string; html: string }
+
+const sessionId = inject('sessionId') as any
+const getMessages = inject('getMessages') as () => any[]
+const setMessages = inject('setMessages') as (msgs: any[]) => void
+const currentModel = inject('currentModel') as any
+const updateSessionTitle = inject('updateSessionTitle') as (id: string, title: string) => void
+
+const titleUpdated = ref(false)
+const allMsgs = ref<Message[]>([])
+const displayLimit = ref(30)
+const shouldScrollAfterLimitChange = ref(false)
+const msgs = computed(() => displayLimit.value === 0 ? allMsgs.value : allMsgs.value.slice(Math.max(0, allMsgs.value.length - displayLimit.value)))
+const input = ref('')
+const loading = ref(false)
+const abortRef = ref<AbortController | null>(null)
+const streamIntervalRef = ref<number | null>(null)
+const apiError = ref('')
+const editingMsg = ref<Message | null>(null)
+const attachments = ref<{ name: string; data: any }[]>([])
+const inputRef = ref<HTMLTextAreaElement>()
+const msgBox = ref<HTMLElement>()
+const isMobile = computed(() => window.innerWidth < 768)
+const suggestions = ['💬 你是谁？', '🔧 系统状态', '📊 有什么 API', '🚀 /help 帮助']
+const API = window.location.origin
+
+function escapeHtml(value: string): string { return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;') }
+function sanitizeHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html')
+  doc.querySelectorAll('script, iframe, object, embed, link, meta').forEach(n => n.remove())
+  doc.querySelectorAll('*').forEach(el => {
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase(); const value = attr.value.trim().toLowerCase()
+      if (name.startsWith('on') || value.startsWith('javascript:')) el.removeAttribute(attr.name)
+    }
+  })
+  return doc.body.firstElementChild?.innerHTML || ''
+}
+function codeRender(text: string, lang = ''): string {
+  const language = lang && hljs.getLanguage(lang) ? lang : ''
+  let highlighted: string
+  try { highlighted = language ? hljs.highlight(text, { language }).value : hljs.highlightAuto(text).value } catch { highlighted = escapeHtml(text) }
+  const data = encodeURIComponent(text); const langText = escapeHtml(language || 'text')
+  return `<pre class="code-block" data-lang="${langText}"><code class="hljs${language ? ` language-${escapeHtml(language)}` : ''}">${highlighted}</code><button type="button" class="code-copy" data-code="${data}" title="复制代码">📋</button></pre>`
+}
+function renderKatex(src: string, displayMode: boolean): string { try { return katex.renderToString(src, { displayMode, throwOnError: false, strict: false, output: 'html' }) } catch (e: any) { return `<span class="katex-err">${escapeHtml(e?.message || src)}</span>` } }
+function extractMath(src: string): { text: string; blocks: MathBlock[] } {
+  const blocks: MathBlock[] = []
+  let text = src.replace(/\$\$([\s\S]+?)\$\$/g, (_, body) => { const placeholder = `@@MATH_${blocks.length}@@`; blocks.push({ placeholder, html: renderKatex(String(body).trim(), true) }); return placeholder })
+  text = text.replace(/(^|[^\\$])\$([^\n$]+?)\$/g, (_, prefix, body) => { const placeholder = `@@MATH_${blocks.length}@@`; blocks.push({ placeholder, html: renderKatex(String(body).trim(), false) }); return `${prefix}${placeholder}` })
+  return { text, blocks }
+}
+function renderMarkdown(text: string): string {
+  if (!text) return ''
+  const fences: string[] = []
+  const withoutFences = text.replace(/```([\w-]*)\s*\n([\s\S]*?)```/g, (full) => { const key = `@@FENCE_${fences.length}@@`; fences.push(full); return key })
+  const { text: mathText, blocks: mathBlocks } = extractMath(withoutFences)
+  let source = mathText.replace(/@@FENCE_(\d+)@@/g, (_, idx) => fences[Number(idx)] || '')
+  source = source.replace(/```mermaid\s*\n([\s\S]*?)```/gi, (_, code) => `<div class="mermaid-wrap" data-mermaid="${encodeURIComponent(String(code).trim())}"><div class="mermaid-loading">🔄 渲染中...</div></div>`)
+  source = source.replace(/```([\w-]*)\s*\n([\s\S]*?)```/g, (_, lang, code) => codeRender(String(code).replace(/\n$/, ''), String(lang || '')))
+  let html = marked.parse(source, { async: false }) as string
+  html = sanitizeHtml(html)
+  for (const block of mathBlocks) html = html.split(block.placeholder).join(block.html)
+  return html
+}
+
+let mermaidReady: Promise<any> | null = null
+function loadMermaid(): Promise<any> {
+  const w = window as any
+  if (w.mermaid) return Promise.resolve(w.mermaid)
+  if (mermaidReady) return mermaidReady
+  mermaidReady = new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js'; script.async = true
+    script.onload = () => { const mermaid = (window as any).mermaid; if (!mermaid) { reject(new Error('Mermaid 加载失败')); return }; mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' }); resolve(mermaid) }
+    script.onerror = () => reject(new Error('Mermaid CDN 加载失败'))
+    document.head.appendChild(script)
+  })
+  return mermaidReady
+}
+async function renderMermaidDiagrams(root?: HTMLElement) {
+  if (!root) return
+  const wraps = Array.from(root.querySelectorAll<HTMLElement>('.mermaid-wrap[data-mermaid]:not([data-rendered="1"])'))
+  if (!wraps.length) return
+  let mermaid: any
+  try { mermaid = await loadMermaid() } catch (e: any) { for (const wrap of wraps) { wrap.setAttribute('data-rendered', '1'); wrap.innerHTML = `<pre class="code-block"><code>${escapeHtml(e?.message || 'Mermaid 加载失败')}</code></pre>` }; return }
+  for (const wrap of wraps) {
+    const code = decodeURIComponent(wrap.getAttribute('data-mermaid') || '')
+    if (!code) continue
+    wrap.setAttribute('data-rendered', '1')
+    try { const id = `mmd-${Date.now()}-${Math.random().toString(16).slice(2)}`; const { svg } = await mermaid.render(id, code); wrap.innerHTML = svg } catch (e: any) { wrap.innerHTML = `<pre class="code-block"><code>${escapeHtml(e?.message || code)}</code></pre>` }
+  }
+}
+
+function normalizeTrace(m: Message) {
+  if (m.reasoning == null) m.reasoning = ''
+  if (Array.isArray(m.tools)) m.tools = m.tools.map(t => ({ ...t, expanded: !!t.expanded }))
+  else m.tools = []
+  if (!Array.isArray(m.segments)) m.segments = []
+  for (const seg of m.segments) if (seg.type === 'tool' && Array.isArray(seg.tools)) seg.tools = seg.tools.map(t => ({ ...t, expanded: !!t.expanded }))
+  if (typeof m.traceExpanded !== 'boolean') m.traceExpanded = false
+  if (typeof m.reasoningExpanded !== 'boolean') m.reasoningExpanded = true
+  if (typeof m.toolsExpanded !== 'boolean') m.toolsExpanded = true
+}
+function reloadMessages() {
+  const raw = getMessages?.() || []
+  allMsgs.value = JSON.parse(JSON.stringify(raw)) as Message[]
+  for (const m of allMsgs.value) {
+    normalizeTrace(m)
+    if (m.streaming && (!m.content || m.content === '')) { m.streaming = false; m.content = '⚠️ 此消息未完成（已标记）' }
+  }
+  titleUpdated.value = allMsgs.value.some(m => m.role === 'user' && !!m.content)
+  afterRender()
+}
+watch(sessionId, () => { reloadMessages(); loadDisplayLimit() }, { immediate: true })
+watch(displayLimit, () => { if (shouldScrollAfterLimitChange.value) { shouldScrollAfterLimitChange.value = false; afterRender() } })
+
+let autoScrollFrozenUntil = 0
+function freezeAutoScroll(ms = 3000) { autoScrollFrozenUntil = Date.now() + ms }
+function canAutoScroll() { return Date.now() > autoScrollFrozenUntil }
+function isNearBottom(el?: HTMLElement) {
+  if (!el) el = msgBox.value
+  if (!el) return true
+  return el.scrollTop + el.clientHeight >= el.scrollHeight - 100
+}
+function onChatScroll() {
+  if (!msgBox.value) return
+  if (isNearBottom(msgBox.value)) autoScrollFrozenUntil = 0
+  else autoScrollFrozenUntil = Infinity  // 滚离底部就永久冻结，不自动抢滚动
+}
+function sync() {
+  const copy = [...allMsgs.value] as any[]
+  allMsgs.value = copy
+  setMessages?.(copy)
+}
+
+// --- frontend stream debug ---
+let _dbgSeq = 0; let _dbgBuf: any[] = []
+function _dbg(tag: string, extra?: any) {
+  const ts = performance.now().toFixed(1); _dbgSeq++
+  const entry = { seq: _dbgSeq, ts: parseFloat(ts), tag, ...(extra || {}) }
+  _dbgBuf.push(entry)
+  if (_dbgBuf.length > 300) _dbgBuf.shift()
+}
+;(window as any).__stream_dbg = () => _dbgBuf
+
+let rafId: number | null = null
+let rafDirty = false
+function scheduleSync() {
+  rafDirty = true
+  if (rafId !== null) return
+  _dbg('scheduleSync:rAF-reg')
+  rafId = requestAnimationFrame(() => {
+    rafId = null
+    if (rafDirty) {
+      rafDirty = false
+      sync()
+      nextTick(() => {
+        // 只对还在接收内容的思考流自动滚底，已完成的让用户自由翻阅
+        for (const m of allMsgs.value) {
+          if (!m.segments) continue
+          for (const seg of m.segments) {
+            if (seg.type === 'reasoning' && seg.active && seg.expanded) {
+              const el = msgBox.value?.querySelector(`[data-seg-id="${seg.id}"] .trace-reason`)
+              if (el) (el as HTMLElement).scrollTop = (el as HTMLElement).scrollHeight
+            }
+          }
+        }
+      })
+    }
+  })
+}
+function flushSync() {
+  if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null }
+  rafDirty = false
+  sync()
+}
+
+
+function scrollDown(force = false) {
+  if (!force && !canAutoScroll()) return
+  const box = msgBox.value
+  if (!box) return
+  nextTick(() => { box.scrollTop = box.scrollHeight })
+}
+function scrollIntoViewIfNeeded(el: HTMLElement, margin = 8) {
+  const box = msgBox.value
+  if (!box) return
+  const br = box.getBoundingClientRect()
+  const er = el.getBoundingClientRect()
+  if (er.bottom > br.bottom) box.scrollTop += er.bottom - br.bottom + margin
+}
+function afterRender() { nextTick(() => { scrollDown(); renderMermaidDiagrams(msgBox.value) }) }
+function traceHasContent(m: Message) { return !!((m.reasoning && m.reasoning.trim()) || (m.tools && m.tools.length)) }
+function toggleTrace(m: Message) { freezeAutoScroll(); m.traceExpanded = !m.traceExpanded; sync() }
+function toggleReasoning(m: Message) { freezeAutoScroll(); m.reasoningExpanded = !m.reasoningExpanded; sync() }
+function toggleTools(m: Message) { freezeAutoScroll(); m.toolsExpanded = !m.toolsExpanded; sync() }
+function scrollToSegment(seg: ChatSegment) {
+  nextTick(() => {
+    const el = msgBox.value?.querySelector(`[data-seg-id="${seg.id}"]`)
+    if (el instanceof HTMLElement) scrollIntoViewIfNeeded(el)
+  })
+}
+function toggleSegment(m: Message, seg: ChatSegment) {
+  seg.userToggled = true
+  seg.expanded = !seg.expanded
+  sync()
+  if (seg.expanded) scrollToSegment(seg)
+}
+function toggleToolEntry(t: TraceTool) {
+  t.userToggled = true
+  t.expanded = !t.expanded
+  sync()
+  if (t.expanded && t.id) {
+    nextTick(() => {
+      const el = msgBox.value?.querySelector(`[data-tool-id="${t.id}"]`)
+      if (el instanceof HTMLElement) scrollIntoViewIfNeeded(el)
+    })
+  }
+}
+function compactValue(value: any, limit = 48) { const s = String(value ?? '').replace(/\s+/g, ' ').trim(); return s.length > limit ? s.slice(0, limit - 1) + '…' : s }
+function baseName(pathLike: any) { const s = String(pathLike ?? '').replace(/\\/g, '/').replace(/\/+$/, ''); return s.split('/').filter(Boolean).pop() || s || '.' }
+function dirLabel(pathLike: any) { const s = String(pathLike ?? '').replace(/\\/g, '/').replace(/\/+$/, ''); return s ? (s === '.' ? '当前目录' : baseName(s)) : '当前目录' }
+function toolTitle(t: TraceTool) { return t.name || 'unknown_tool' }
+function toolSummary(t: TraceTool) {
+  const a: any = t.args || {}
+  const name = String(t.name || '').toLowerCase()
+  const path = a.path ?? a.file ?? a.filename
+  const dir = a.dir ?? a.directory ?? a.folder ?? a.path
+  if (name.includes('list_directory') || name === 'list_dir' || name.includes('list_dir')) return `查看目录 ${dirLabel(dir)}`
+  if (name.includes('read_file_lines')) return `读取文件片段 ${baseName(path)}`
+  if (name.includes('file_read') || name.includes('read_file')) return `读取文件 ${baseName(path)}`
+  if (name.includes('write_file') || name.includes('file_write')) return `写入文件 ${baseName(path)}`
+  if (name.includes('patch') || name.includes('replace') || name.includes('edit_file')) return `修改文件 ${baseName(path)}`
+  if (name.includes('run_command') || name.includes('shell') || name.includes('exec')) return `执行命令 ${compactValue(a.command ?? a.cmd ?? a.code, 42)}`
+  if (name.includes('web_search') || name.includes('search')) return `搜索 ${compactValue(a.query ?? a.keyword ?? a.q, 42)}`
+  if (name.includes('fetch') || name.includes('browser') || name.includes('webpage')) return `读取网页 ${compactValue(a.url ?? a.link, 42)}`
+  if (a.query) return `查询 ${compactValue(a.query, 42)}`
+  if (a.url) return `访问 ${compactValue(a.url, 42)}`
+  if (path) return `处理 ${baseName(path)}`
+  return Object.keys(a).length ? compactValue(JSON.stringify(a), 56) : '无参数'
+}
+function formatJson(value: any) { try { return typeof value === 'string' ? value : JSON.stringify(value ?? {}, null, 2) } catch { return String(value) } }
+async function loadDisplayLimit() { try { const resp = await fetch(`${API}/api/v1/settings`); if (resp.ok) { const settings = await resp.json(); if (typeof settings.displayLimit === 'number' && settings.displayLimit >= 0) { shouldScrollAfterLimitChange.value = true; displayLimit.value = settings.displayLimit } } } catch { /* 静默 */ } }
+function loadMore() { shouldScrollAfterLimitChange.value = false; displayLimit.value += 20 }
+function handleKey(e: KeyboardEvent) { if (e.key === 'Escape' && editingMsg.value) { cancelEdit(); return }; if (e.key !== 'Enter') return; if (window.innerWidth < 768 || e.shiftKey) return; e.preventDefault(); handleSend() }
+function handlePaste(e: ClipboardEvent) { const items = e.clipboardData?.items; if (!items) return; for (let i = 0; i < items.length; i++) { if (items[i].type.startsWith('image/')) { const f = items[i].getAsFile(); if (f) attachments.value.push({ name: f.name || '图片', data: f }) } } }
+function autoSize() { nextTick(() => { const el = inputRef.value; if (!el) return; el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 120)}px` }) }
+function stopGen() { if (abortRef.value) { abortRef.value.abort(); abortRef.value = null }; if (streamIntervalRef.value !== null) { clearInterval(streamIntervalRef.value); streamIntervalRef.value = null }; const streamingMsg = allMsgs.value.find(m => m.streaming); if (streamingMsg) streamingMsg.streaming = false; loading.value = false; flushSync(); afterRender() }
+
+async function buildRequestContext(untilIdx?: number) {
+  const settingsResp = await fetch(`${API}/api/v1/settings`)
+  if (!settingsResp.ok) throw new Error(`设置读取失败 HTTP ${settingsResp.status}`)
+  const settings = await settingsResp.json()
+  const modelName = currentModel?.value || ''
+  let provider: any = null
+  if (settings.providers && modelName) provider = settings.providers.find((p: any) => p.models && p.models.includes(modelName))
+  if (!provider && settings.providers?.length) provider = settings.providers.find((p: any) => p.models?.length) || settings.providers[0]
+  const history: { role: string; content: string }[] = []
+  if (Array.isArray(settings.prompts)) { const def = settings.prompts.find((p: any) => p.isDefault); if (def?.content) history.push({ role: 'system', content: def.content }) }
+  const source = typeof untilIdx === 'number' ? allMsgs.value.slice(0, untilIdx + 1) : allMsgs.value
+  history.push(...source.filter((m: any) => m.role && m.content && !m.streaming && !m.toolCall).map((m: any) => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.content })))
+  return {
+    settings,
+    requestBody: {
+      messages: history,
+      model: modelName || provider?.models?.[0] || 'gpt-4o',
+      baseUrl: provider?.baseUrl || 'https://api.openai.com',
+      apiKey: provider?.key || '',
+      temperature: settings.params?.temperature ?? 0.7,
+      maxTokens: settings.params?.maxTokens || 4096,
+    },
+  }
+}
+async function requestAi(aiMsg: Message, untilIdx?: number) {
+  const ac = new AbortController(); abortRef.value = ac
+  const { requestBody } = await buildRequestContext(untilIdx)
+  function findMsg() { return allMsgs.value.find(m => m.id === aiMsg.id) }
+  const proxyMsg = findMsg()
+  if (!proxyMsg) { loading.value = false; return }
+
+  proxyMsg.reasoning = ''
+  proxyMsg.tools = []
+  proxyMsg.segments = []
+  proxyMsg.traceExpanded = false
+  proxyMsg.reasoningExpanded = false
+  proxyMsg.toolsExpanded = false
+  proxyMsg.content = ''
+  proxyMsg.streaming = true
+
+  let currentReasoningSeg: ChatSegment | null = null
+  let currentToolSeg: ChatSegment | null = null
+  let done = false
+
+  function closeActiveSegs(m: Message) {
+    for (const seg of m.segments || []) {
+      seg.active = false
+      // 思考段完成后不自动折叠，内容保留在屏幕上让用户看完
+      // 工具段也不自动折叠，避免闪烁
+    }
+    currentReasoningSeg = null
+    currentToolSeg = null
+  }
+  function ensureToolSeg(m: Message) {
+    if (currentToolSeg) return currentToolSeg
+    const lastSeg = m.segments?.[m.segments.length - 1]
+    if (lastSeg?.type === 'tool') currentToolSeg = lastSeg
+    else {
+      currentToolSeg = { id: `toolseg-${Date.now()}-${Math.random().toString(16).slice(2)}`, type: 'tool', tools: [], expanded: true, active: true }
+      m.segments = [...(m.segments || []), currentToolSeg]
+    }
+    currentToolSeg.active = true
+    if (!currentToolSeg.userToggled) currentToolSeg.expanded = true
+    return currentToolSeg
+  }
+  function appendTextSeg(m: Message, chunk: string) {
+    closeActiveSegs(m)
+    let last = m.segments?.[m.segments.length - 1]
+    if (!last || last.type !== 'text') {
+      last = { id: `text-${Date.now()}-${Math.random().toString(16).slice(2)}`, type: 'text', content: '' }
+      m.segments = [...(m.segments || []), last]
+    }
+    last.content = (last.content || '') + chunk
+    m.content += chunk
+  }
+
+  // ── 打字机缓冲 ──────────────────────────────────────
+  let _charBuf = ''
+  let _flushTimer: ReturnType<typeof setInterval> | null = null
+  let _flushCount = 0
+  const _FAST_LIMIT = 30
+  const _FAST_MS = 10
+  const _SLOW_MS = 45
+  let _firstContent = false
+
+  const _typeFlush = () => {
+    const m = findMsg()
+    if (!m || !_charBuf) return
+    const takeLen = _flushCount < _FAST_LIMIT ? 1 : 2
+    const chunk = _charBuf.slice(0, takeLen)
+    if (!chunk) return
+    _charBuf = _charBuf.slice(takeLen)
+    appendTextSeg(m, chunk)
+    _flushCount += chunk.length
+    scrollDown()
+    sync()
+    if (_flushCount >= _FAST_LIMIT && _flushCount - chunk.length < _FAST_LIMIT) {
+      clearInterval(_flushTimer!)
+      _flushTimer = setInterval(_typeFlush, _SLOW_MS)
+    }
+  }
+  const _ensureFlush = () => { if (!_flushTimer) _flushTimer = setInterval(_typeFlush, _FAST_MS) }
+  const _flushAllNow = () => {
+    if (_flushTimer) { clearInterval(_flushTimer); _flushTimer = null }
+    if (_charBuf) { appendTextSeg(findMsg()!, _charBuf); _charBuf = '' }
+  }
+
+  try {
+    const resp = await fetch(`${API}/api/v1/chat/stream`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody), signal: ac.signal,
+    })
+    if (!resp.ok) { const errText = await resp.text().catch(() => ''); throw new Error(`API ${resp.status}: ${errText.slice(0, 300)}`) }
+    if (!resp.body) throw new Error('浏览器不支持流式读取')
+
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done: streamDone, value } = await reader.read()
+      _dbg('reader:chunk', { bytes: value?.length || 0, done: streamDone })
+      if (streamDone && !buffer.trim()) break
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !streamDone })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      _dbg('reader:lines', { n: lines.length })
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+        if (trimmed === 'data: [DONE]') { _dbg('ss:done-marker'); done = true; break }
+        if (!trimmed.startsWith('data: ')) continue
+        const event = JSON.parse(trimmed.slice(6))
+        const m = findMsg()
+        if (!m) { loading.value = false; return }
+
+        switch (event.type) {
+          case 'reasoning': {
+            if (currentToolSeg) { currentToolSeg.active = false; currentToolSeg = null }
+            if (!currentReasoningSeg) {
+              currentReasoningSeg = { id: `reasoning-${Date.now()}-${Math.random().toString(16).slice(2)}`, type: 'reasoning', content: '', expanded: true, active: true }
+              m.segments = [...(m.segments || []), currentReasoningSeg]
+            }
+            currentReasoningSeg.content += event.content
+            m.reasoning += event.content
+            _dbg('evt:reasoning', { delta: event.content.length, total: currentReasoningSeg.content.length, preview: event.content.slice(0, 20) })
+            scrollDown()
+            scheduleSync()
+            break
+          }
+          case 'tool_round_start': {
+            if (currentReasoningSeg) {
+              currentReasoningSeg.active = false
+              currentReasoningSeg = null
+            }
+            ensureToolSeg(m)
+            scrollDown()
+            break
+          }
+          case 'tool_call_start': {
+            const seg = ensureToolSeg(m)
+            const toolId = event.id || `tool-${seg.tools?.length || 0}`
+            const runningTool: TraceTool = { id: toolId, round: event.round, name: event.name, args: event.args, running: true, expanded: false }
+            seg.tools = [...(seg.tools || []), runningTool]
+            m.tools = [...(m.tools || []), runningTool]
+            scrollDown()
+            break
+          }
+          case 'tool_call': {
+            const seg = ensureToolSeg(m)
+            const toolId = event.id || `tool-${seg.tools?.length || 0}`
+            const prevTool = (seg.tools || []).find(t => t.id === toolId)
+            const toolEntry: TraceTool = {
+              id: toolId, round: event.round, name: event.name, args: event.args,
+              result: event.result, ok: event.ok, error: event.error, durationMs: event.durationMs,
+              expanded: prevTool?.userToggled ? !!prevTool.expanded : event.ok === false,
+              running: false, userToggled: prevTool?.userToggled,
+            }
+            const idx = (seg.tools || []).findIndex(t => t.id === toolId)
+            if (idx >= 0) seg.tools!.splice(idx, 1, toolEntry)
+            else seg.tools = [...(seg.tools || []), toolEntry]
+            const flatIdx = (m.tools || []).findIndex(t => t.id === toolId)
+            if (flatIdx >= 0) m.tools!.splice(flatIdx, 1, toolEntry)
+            else m.tools = [...(m.tools || []), toolEntry]
+            break
+          }
+          case 'content':
+            if (!_firstContent) {
+              closeActiveSegs(m)
+              const seg = { id: `text-${Date.now()}-${Math.random().toString(16).slice(2)}`, type: 'text', content: '' } as ChatSegment
+              m.segments = [...(m.segments || []), seg]
+              _firstContent = true
+            }
+            _charBuf += event.content
+            _ensureFlush()
+            break
+        }
+      }
+    }
+  } catch (e: any) {
+    if (e?.name === 'AbortError') { _flushAllNow(); loading.value = false; flushSync(); afterRender(); return }
+    const m = findMsg()
+    if (m) { m.content = `❌ **请求失败**\n\n\`\`\`\n${e?.message || e}\n\`\`\`\n\n> 请检查设置。` }
+    apiError.value = e?.message || '请求失败'
+    loading.value = false; _flushAllNow(); flushSync(); afterRender(); return
+  }
+
+  _flushAllNow()
+  const finalMsg = findMsg()
+  if (!finalMsg) { loading.value = false; return }
+  finalMsg.streaming = false; loading.value = false
+  closeActiveSegs(finalMsg)
+  finalMsg.reasoningExpanded = false
+  finalMsg.toolsExpanded = false
+  finalMsg.traceExpanded = false
+  flushSync(); afterRender()
+}
+
+async function handleSend(text?: string) {
+  loadDisplayLimit()
+  const msg = (text ?? input.value).trim()
+  input.value = ''; autoSize(); apiError.value = ''
+  if (msg.startsWith('/')) { handleSlashCommand(msg); return }
+  if (editingMsg.value) { const editIdx = allMsgs.value.findIndex(m => m.id === editingMsg.value?.id); if (editIdx >= 0) allMsgs.value.splice(editIdx); editingMsg.value = null }
+  const lastMsg = allMsgs.value[allMsgs.value.length - 1]
+  if (!lastMsg || !(lastMsg.role === 'user' && lastMsg.content === msg)) { allMsgs.value.push({ id: Date.now().toString(), role: 'user', content: msg }); sync() }
+  loading.value = true
+  const aiId = (Date.now() + 1).toString()
+  const aiMsg: Message = { id: aiId, role: 'ai', content: '', streaming: true, branches: [], branchIdx: 0, reasoning: '', tools: [], segments: [], traceExpanded: false }
+  allMsgs.value.push(aiMsg); sync(); scrollDown()
+  try { await requestAi(aiMsg) } catch (e: any) {
+    if (e?.name === 'AbortError') { loading.value = false; sync(); afterRender(); return }
+    const proxyMsg = allMsgs.value.find(m => m.id === aiId)
+    if (proxyMsg) { proxyMsg.streaming = false; proxyMsg.content = `❌ **请求失败**\n\n\`\`\`\n${e?.message || e}\n\`\`\`\n\n> 请检查设置中的 Provider 配置（API Key / Base URL / 模型名称）是否正确。` }
+    apiError.value = e?.message || '请求失败'; loading.value = false; sync(); afterRender()
+  }
+}
+function handleSlashCommand(cmd: string) { allMsgs.value.push({ id: Date.now().toString(), role: 'user', content: cmd }); let reply = ''; if (cmd === '/help') reply = '🎯 **斜杠命令**\n\n`/clear` 清空当前对话\n`/help` 显示帮助\n`/model <name>` 切换模型\n`/export` 导出对话\n`/status` 系统状态'; else if (cmd === '/clear') { allMsgs.value = []; sync(); scrollDown(); return } else if (cmd === '/status') reply = `🖥️ **Personal AI OS V2**\n\n后端：✅ 运行中 (8080)\n模型：${currentModel?.value || '未选择'}\n工具：5 个已注册`; else reply = `未识别命令 \`${cmd}\`，输入 \`/help\` 查看可用命令`; allMsgs.value.push({ id: (Date.now() + 1).toString(), role: 'ai', content: reply, reasoning: '', tools: [], segments: [], traceExpanded: false }); sync(); afterRender() }
+async function retryMsg(m: Message) {
+  if (loading.value) return
+  const idx = allMsgs.value.indexOf(m); if (idx === -1) return
+  let userIdx = -1; for (let i = idx - 1; i >= 0; i--) { if (allMsgs.value[i].role === 'user') { userIdx = i; break } }
+  if (userIdx === -1) return
+  loading.value = true; apiError.value = ''
+  const aiId = (Date.now() + 1).toString()
+  const aiMsg: Message = { id: aiId, role: 'ai', content: '', streaming: true, branches: [], branchIdx: 0, reasoning: '', tools: [], segments: [], traceExpanded: false }
+  allMsgs.value.splice(idx, allMsgs.value.length - idx, aiMsg); sync(); scrollDown()
+  try { await requestAi(aiMsg, userIdx) } catch (e: any) {
+    if (e?.name === 'AbortError') { loading.value = false; sync(); afterRender(); return }
+    const proxyMsg = allMsgs.value.find(m => m.id === aiId)
+    if (proxyMsg) { proxyMsg.streaming = false; proxyMsg.content = `❌ **请求失败**\n\n\`\`\`\n${e?.message || e}\n\`\`\`\n\n> 请检查设置中的 Provider 配置（API Key / Base URL / 模型名称）是否正确。` }
+    apiError.value = e?.message || '请求失败'; loading.value = false; sync(); afterRender()
+  }
+}
+
+async function copyMsg(m: Message, e: Event) { const btn = (e.target as HTMLElement).closest('button'); if (!btn) return; copyToClipboard(m.content, btn) }
+function cancelEdit() { editingMsg.value = null; input.value = ''; autoSize(); inputRef.value?.blur() }
+function editMsg(m: Message) { editingMsg.value = m; input.value = m.content; autoSize(); nextTick(() => inputRef.value?.focus()) }
+function deleteMsg(m: Message) { const idx = allMsgs.value.findIndex(msg => msg.id === m.id); if (idx === -1) return; allMsgs.value.splice(idx); sync(); setMessages(allMsgs.value as any[]) }
+function prevBranch(m: Message) { if ((m.branchIdx || 0) > 0 && m.branches) { m.branchIdx = (m.branchIdx || 0) - 1; m.content = m.branches[m.branchIdx]; sync() } }
+function nextBranch(m: Message) { if (m.branches && (m.branchIdx || 0) < m.branches.length - 1) { m.branchIdx = (m.branchIdx || 0) + 1; m.content = m.branches[m.branchIdx]; sync() } }
+function onMsgClick(e: MouseEvent) { const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.code-copy'); if (!btn) return; const code = decodeURIComponent(btn.dataset.code || ''); copyToClipboard(code, btn) }
+async function copyToClipboard(text: string, btn: HTMLElement) { try { await navigator.clipboard.writeText(text); btn.textContent = '✅'; window.setTimeout(() => { btn.textContent = '📋' }, 900); return } catch { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px'; ta.style.top = '-9999px'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); btn.textContent = '✅'; window.setTimeout(() => { btn.textContent = '📋' }, 900) } }
+onUnmounted(() => msgBox.value?.removeEventListener('click', onMsgClick))
+</script>
+
+<style scoped>
+.chat-page{height:100%;display:flex;flex-direction:column;background:var(--bg);overflow:hidden}.chat-msgs{flex:1;display:flex;flex-direction:column;gap:14px;padding:16px;overflow-y:auto}.chat-empty{margin:auto;display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--text2);text-align:center}.chat-empty__icon{font-size:48px}.chat-empty__title{font-size:18px;font-weight:600;color:var(--text)}.chat-empty__hint{font-size:13px;color:var(--text2)}.chat-chips{display:flex;flex-direction:column;gap:6px;width:100%;max-width:280px;margin-top:8px}.chat-chip{padding:10px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border-light);color:var(--text);cursor:pointer;font-size:13px;text-align:left;transition:all .15s}.chat-chip:active,.chat-chip:hover{border-color:var(--primary);background:var(--surface-alt)}.chat-load-more{padding:10px 16px;text-align:center;color:var(--primary);font-size:13px;cursor:pointer;border-radius:8px;background:var(--surface);border:1px dashed var(--border-light);transition:all .15s;user-select:none}.chat-load-more:hover{background:var(--surface-alt);border-color:var(--primary)}
+.chat-input-wrap{padding:8px 8px max(8px,env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--border-light);flex-shrink:0}.chat-files{display:flex;gap:6px;flex-wrap:wrap;padding-bottom:6px}.chat-file{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;background:var(--surface);font-size:12px}.chat-file__rm{background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:14px}.chat-input-area{display:flex;flex-direction:column}.chat-edit-bar{display:flex;align-items:center;gap:8px;padding:0 4px 6px;font-size:12px}.chat-edit-hint{color:var(--warn);font-weight:500}.chat-edit-cancel{background:transparent;border:none;color:var(--text3);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;font-family:inherit}.chat-edit-cancel:hover{color:var(--text)}.chat-input-row{display:flex;gap:8px;align-items:flex-end}.chat-input{flex:1;padding:12px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border-light);color:var(--text);font-size:14px;font-family:inherit;resize:none;outline:none;overflow:hidden;min-height:44px;max-height:120px;line-height:1.4;transition:border .2s}.chat-input:focus{border-color:var(--primary)}
+.msg{display:flex;gap:8px;max-width:90%;animation:msgIn .2s ease}@keyframes msgIn{from{opacity:0;transform:translateY(6px)}}.msg--user{align-self:flex-end;flex-direction:row-reverse}.msg--ai{align-self:flex-start}.msg__avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;background:var(--surface-alt)}.msg__body{display:flex;flex-direction:column;gap:4px;max-width:100%;min-width:0}.msg__bubble{padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.6;word-break:break-word;max-width:100%;overflow:hidden}.msg--user .msg__bubble{background:var(--primary);color:#fff;border-bottom-right-radius:4px}.msg--ai .msg__bubble{background:var(--surface);border:1px solid var(--border-light);border-bottom-left-radius:4px}.msg__text{max-width:100%;overflow-wrap:anywhere;animation:msgFadeIn .12s ease-out}@keyframes msgFadeIn{from{opacity:0.88}to{opacity:1}}.trace-slide-enter-active,.trace-slide-leave-active{transition:all .25s ease;overflow:hidden}.trace-slide-enter-from,.trace-slide-leave-to{max-height:0;opacity:0;padding-top:0;padding-bottom:0}.trace-slide-enter-to,.trace-slide-leave-from{max-height:600px;opacity:1}.msg__cursor{display:inline-block;width:2px;height:14px;background:var(--primary);animation:cursorPulse 1.2s ease-in-out infinite;vertical-align:middle;margin-left:2px}@keyframes cursorPulse{0%,100%{opacity:0.4}50%{opacity:1}75%{opacity:0.8}}
+.trace-tool__summary{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);font-size:12px}.trace-tool__state.running{color:var(--warn);background:rgba(245,158,11,.12)}
+.msg__actions{display:flex;gap:4px;padding:4px 0 0;opacity:0;transition:opacity .2s}.msg:hover .msg__actions{opacity:1}.msg--user .msg__actions{justify-content:flex-end}.msg__act{width:28px;height:28px;border-radius:6px;background:var(--surface-alt);border:1px solid var(--border-light);color:var(--text2);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .15s}.msg__act:hover{background:var(--surface);border-color:var(--primary);color:var(--primary)}.msg__branch{display:flex;align-items:center;gap:8px;color:var(--text3);font-size:11px}.msg__branch-nav button{width:22px;height:22px;border-radius:5px;border:1px solid var(--border-light);background:var(--surface);color:var(--text2)}.tool-card{align-self:flex-start;max-width:90%;border:1px solid var(--border-light);background:var(--surface);border-radius:10px;overflow:hidden;cursor:pointer}.tool-card__header{display:flex;align-items:center;gap:8px;padding:9px 12px;font-size:13px}.tool-card__name{font-weight:600}.tool-card__status{color:var(--warn);font-size:12px}.tool-card__status.done{color:var(--success)}.tool-card__arrow{margin-left:auto;color:var(--text3)}.tool-card__body{border-top:1px solid var(--border-light);padding:10px}.tool-card__label{font-size:11px;color:var(--text3);margin-bottom:4px}.tool-card__code{background:#0d1117;padding:8px;border-radius:6px;font-size:11px;font-family:monospace;color:var(--text2);overflow-x:auto;white-space:pre-wrap;max-height:200px;overflow-y:auto}.tool-card__section+.tool-card__section{margin-top:8px}.chat-send{width:44px;height:44px;border-radius:50%;background:var(--primary);color:#fff;border:none;font-size:20px;cursor:pointer;flex-shrink:0;transition:all .2s;display:flex;align-items:center;justify-content:center}.chat-send:active{transform:scale(.9)}.chat-send.disabled{opacity:.4;pointer-events:none}.chat-send.stop{background:var(--error);animation:pulse-stop 1.2s ease-in-out infinite}@keyframes pulse-stop{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 8px rgba(239,68,68,0)}}
+:deep(.msg__text p),:deep(.trace-reason p){margin:0 0 8px}:deep(.msg__text p:last-child),:deep(.trace-reason p:last-child){margin-bottom:0}:deep(.code-block){background:#0d1117;border-radius:8px;padding:32px 12px 12px;margin:8px 0;overflow-x:auto;font-family:'JetBrains Mono','Fira Code',monospace;font-size:12px;line-height:1.6;border:1px solid var(--border-light);position:relative;color:#e6edf3}:deep(.code-block)::before{content:attr(data-lang);position:absolute;top:7px;left:12px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}:deep(.code-copy){position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:4px;background:transparent;border:1px solid transparent;color:var(--text3);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;opacity:.55}:deep(.code-copy):hover{opacity:1;background:rgba(255,255,255,.08);border-color:var(--border-light);color:var(--text)}:deep(.inline-code),:deep(:not(pre)>code){background:var(--surface-alt);padding:1px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--primary-light)}:deep(a){color:var(--primary-light);text-decoration:underline}:deep(strong){font-weight:700}:deep(em){font-style:italic}:deep(ol),:deep(ul){padding-left:0.1em;list-style-position:inside;margin:6px 0}:deep(li){margin:2px 0}:deep(li)::marker{color:var(--text3)}
+:deep(table){border-collapse:separate;border-spacing:0;width:100%;margin:10px 0;font-size:13px;overflow-x:auto;display:block;border-radius:8px;border:1px solid var(--border-light);box-shadow:0 1px 4px rgba(0,0,0,.08)}:deep(thead){background:var(--surface-alt);position:sticky;top:0}:deep(th){font-weight:700;padding:10px 12px;border-bottom:2px solid var(--border-light);text-align:left;color:var(--text);font-size:12.5px;letter-spacing:.3px;text-transform:uppercase;white-space:nowrap}:deep(th):not(:last-child){border-right:1px solid var(--border-light)}:deep(td){padding:9px 12px;border-bottom:1px solid var(--border-light);color:var(--text);vertical-align:top;line-height:1.5}:deep(td):not(:last-child){border-right:1px solid var(--border-light)}:deep(tr:last-child td){border-bottom:none}:deep(tr:nth-child(even)){background:rgba(128,128,128,.04)}:deep(tr:hover){background:rgba(128,128,128,.07)}:deep(.hljs){color:#e6edf3;background:transparent}:deep(.hljs-keyword){color:#ff7b72}:deep(.hljs-string){color:#a5d6ff}:deep(.hljs-number){color:#79c0ff}:deep(.hljs-comment){color:#8b949e;font-style:italic}:deep(.hljs-title){color:#d2a8ff}:deep(.hljs-built_in),:deep(.hljs-type){color:#ffa657}:deep(.hljs-attr),:deep(.hljs-attribute){color:#79c0ff}:deep(.hljs-literal){color:#ff7b72}:deep(.hljs-meta){color:#8b949e}:deep(.hljs-tag),:deep(.hljs-name){color:#7ee787}:deep(.hljs-selector-class),:deep(.hljs-selector-id){color:#d2a8ff}:deep(.hljs-selector-tag){color:#7ee787}:deep(.hljs-regexp){color:#a5d6ff}:deep(.hljs-symbol){color:#79c0ff}:deep(.hljs-deletion){color:#ff7b72;background:rgba(255,123,114,.1)}:deep(.hljs-addition){color:#7ee787;background:rgba(126,231,135,.1)}:deep(.hljs-section){color:#d2a8ff;font-weight:700}
+@media (max-width:767px){.chat-msgs{padding:12px 10px}.msg,.tool-card{max-width:96%}.msg__actions{opacity:1}.chat-hints{display:none}.trace-body{animation:textFade .12s ease;padding:8px}.trace-reason{max-height:200px}.trace-tool__head{gap:5px}.trace-tool__time{display:none}}
+</style>

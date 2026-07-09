@@ -1,0 +1,61 @@
+# ============================================================
+# Workspace 配置
+# ============================================================
+workspace:
+  root: "storage/workspace"
+  default_file: "untitled.md"
+  auto_save: true
+  auto_save_interval: 30000
+  max_recent_files: 20
+
+  editors:
+    markdown:
+      enabled: true
+      preview: true
+      split_view: true
+
+    monaco:
+      enabled: true
+      theme: "one-dark-pro"
+      font_size: 14
+      tab_size: 2
+      word_wrap: true
+      minimap: true
+      line_numbers: true
+
+    terminal:
+      enabled: true
+      shell: "bash"
+      font_size: 13
+      scrollback: 5000
+
+    notebook:
+      enabled: true
+      kernel: "python3"
+      auto_execute: false
+
+    mermaid:
+      enabled: true
+      theme: "dark"
+      scale: 1.0
+
+    svg:
+      enabled: true
+      editable: true
+
+    json:
+      enabled: true
+      tree_view: true
+
+    yaml:
+      enabled: true
+      tree_view: true
+
+    csv:
+      enabled: true
+      delimiter: ","
+      preview_rows: 50
+
+    pdf:
+      enabled: true
+      default_zoom: 1.0

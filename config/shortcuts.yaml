@@ -1,0 +1,53 @@
+# ============================================================
+# 快捷键配置
+# ============================================================
+shortcuts:
+  enabled: true
+
+  global:
+    - keys: "Ctrl+K"
+      action: "command_palette"
+      description: "命令面板"
+    - keys: "Ctrl+Shift+P"
+      action: "command_palette"
+      description: "命令面板"
+    - keys: "Ctrl+Shift+O"
+      action: "search"
+      description: "全局搜索"
+    - keys: "Ctrl+N"
+      action: "new_chat"
+      description: "新建对话"
+    - keys: "Ctrl+W"
+      action: "close_tab"
+      description: "关闭标签"
+    - keys: "Ctrl+Shift+I"
+      action: "toggle_sidebar"
+      description: "切换侧边栏"
+    - keys: "Ctrl+,"
+      action: "open_settings"
+      description: "打开设置"
+    - keys: "Ctrl+B"
+      action: "toggle_sidebar"
+      description: "切换侧边栏"
+
+  chat:
+    - keys: "Enter"
+      action: "send_message"
+      description: "发送消息"
+    - keys: "Shift+Enter"
+      action: "new_line"
+      description: "换行"
+    - keys: "Ctrl+Up"
+      action: "edit_last_message"
+      description: "编辑上一条消息"
+
+  workspace:
+    - keys: "Ctrl+S"
+      action: "save_file"
+      description: "保存文件"
+    - keys: "Ctrl+Shift+S"
+      action: "save_as"
+      description: "另存为"
+    - keys: "Ctrl+Shift+E"
+      action: "export"
+      description: "导出"

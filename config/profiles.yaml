@@ -1,0 +1,40 @@
+# ============================================================
+# Profile 配置（多用户场景 / 多角色切换）
+# ============================================================
+profiles:
+  default: "default"
+  current: "default"
+
+  list:
+    - id: "default"
+      name: "默认"
+      avatar: "🤖"
+      description: "默认个人配置"
+      model: "gpt-4o"
+      prompt: "default"
+      agent: "general"
+      theme: "dark"
+      temperature: 0.7
+      api_provider: "openai"
+
+    - id: "coder"
+      name: "极客模式"
+      avatar: "👨‍💻"
+      description: "纯代码模式，极简界面"
+      model: "deepseek-chat"
+      prompt: "coding"
+      agent: "coder"
+      theme: "dark"
+      temperature: 0.2
+      api_provider: "deepseek"
+
+    - id: "writer"
+      name: "写作模式"
+      avatar: "✍️"
+      description: "专注写作，轻盈界面"
+      model: "gpt-4o"
+      prompt: "writing"
+      agent: "general"
+      theme: "light"
+      temperature: 0.8
+      api_provider: "openai"
