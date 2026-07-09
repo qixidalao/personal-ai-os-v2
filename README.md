@@ -143,13 +143,6 @@ cd /home/qixi/mcp_agent/workspace/personal-ai-os-v2
 
 ```text
 http://localhost:8080
-```
-
-在 WSL2/局域网环境下，也可以通过机器内网 IP 访问，例如：
-
-```text
-http://10.123.9.78:8080
-```
 
 ---
 
