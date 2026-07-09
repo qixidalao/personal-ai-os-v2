@@ -219,18 +219,39 @@
               </div>
             </div>
           </div>
+
           <!-- API 入口 -->
           <div class="set-card">
-            <div class="set-card-header">🔌 API 入口</div>
+            <div class="set-card-header">🔌 API 入口 <span class="about-api-badge">/api/v1</span></div>
             <div class="set-body">
-              <div class="about-api-item"><code class="about-api-path">GET /</code><span class="about-api-desc">服务状态 / 前端页面</span></div>
-              <div class="about-api-item"><code class="about-api-path">POST /api/v1/chat</code><span class="about-api-desc">聊天请求</span></div>
-              <div class="about-api-item"><code class="about-api-path">GET /api/v1/settings</code><span class="about-api-desc">读取设置</span></div>
-              <div class="about-api-item"><code class="about-api-path">PUT /api/v1/settings</code><span class="about-api-desc">保存设置</span></div>
-              <div class="about-api-item"><code class="about-api-path">GET /api/v1/sessions</code><span class="about-api-desc">会话列表</span></div>
-              <div class="about-api-item"><code class="about-api-path">WS /ws/onebot</code><span class="about-api-desc">OneBot 反向 WebSocket</span></div>
-              <div class="about-api-item">
-                <a class="about-api-docs" href="https://github.com/qixidalao/personal-ai-os-v2/blob/master/docs/API/endpoints.md" target="_blank" rel="noopener">📖 完整 API 文档 ↗</a>
+              <div class="about-api-group">
+                <div class="about-api-group-title">💬 聊天</div>
+                <div class="about-api-item"><code class="about-api-path">POST /api/v1/chat</code><span class="about-api-desc">聊天请求</span></div>
+                <div class="about-api-item"><code class="about-api-path">GET /api/v1/stream/chat</code><span class="about-api-desc">流式对话 SSE</span></div>
+              </div>
+              <div class="about-api-group">
+                <div class="about-api-group-title">📋 会话</div>
+                <div class="about-api-item"><code class="about-api-path">GET /api/v1/sessions</code><span class="about-api-desc">会话列表</span></div>
+                <div class="about-api-item"><code class="about-api-path">GET /api/v1/sessions/:id</code><span class="about-api-desc">获取单个会话</span></div>
+                <div class="about-api-item"><code class="about-api-path">DELETE /api/v1/sessions/:id</code><span class="about-api-desc">删除会话</span></div>
+              </div>
+              <div class="about-api-group">
+                <div class="about-api-group-title">⚙️ 设置</div>
+                <div class="about-api-item"><code class="about-api-path">GET /api/v1/settings</code><span class="about-api-desc">读取设置</span></div>
+                <div class="about-api-item"><code class="about-api-path">PUT /api/v1/settings</code><span class="about-api-desc">保存设置</span></div>
+                <div class="about-api-item"><code class="about-api-path">POST /api/v1/settings/reset</code><span class="about-api-desc">重置设置</span></div>
+              </div>
+              <div class="about-api-group">
+                <div class="about-api-group-title">🔧 工具</div>
+                <div class="about-api-item"><code class="about-api-path">GET /api/v1/tools</code><span class="about-api-desc">列出可用工具</span></div>
+                <div class="about-api-item"><code class="about-api-path">POST /api/v1/tools/call</code><span class="about-api-desc">调用工具</span></div>
+              </div>
+              <div class="about-api-group">
+                <div class="about-api-group-title">📎 其他</div>
+                <div class="about-api-item"><code class="about-api-path">GET /api/v1/health</code><span class="about-api-desc">健康检查</span></div>
+                <div class="about-api-item"><code class="about-api-path">POST /api/v1/upload</code><span class="about-api-desc">上传文件</span></div>
+                <div class="about-api-item"><code class="about-api-path">GET /api/v1/config</code><span class="about-api-desc">配置管理</span></div>
+                <div class="about-api-item"><code class="about-api-path">WS /ws/onebot</code><span class="about-api-desc">OneBot 反向 WebSocket</span></div>
               </div>
             </div>
           </div>
@@ -594,5 +615,5 @@ onUnmounted(() => { window.removeEventListener('resize', onResize); if (saveTime
 .set-btn{padding:8px 16px!important;border-radius:6px!important;font-size:13px!important;border:none!important;cursor:pointer}.set-btn:disabled{opacity:.6;cursor:not-allowed}.ai-btn--ghost{background:var(--surface-alt);color:var(--text2)}.ai-btn--primary{background:var(--primary);color:#fff}
 @media (max-width: 767px){.set-content{padding:12px}.set-section{max-width:none}.set-modal{max-width:100%}.set-inline-row{flex-direction:column;align-items:stretch}.set-refresh-btn{height:32px}}
 .about-thanks-list{display:flex;flex-wrap:wrap;gap:6px}.about-thanks-tag{padding:4px 10px;border-radius:12px;background:var(--surface-alt);font-size:12px;color:var(--text2);border:1px solid var(--border-light)}
-.about-api-item{display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border-light);font-size:13px}.about-api-item:last-child{border:none}.about-api-path{font-size:12px;padding:2px 6px;border-radius:4px;background:var(--surface-alt);color:var(--primary);font-family:monospace;white-space:nowrap}.about-api-desc{color:var(--text2);font-size:12px}.about-api-docs{font-size:12px;color:var(--primary);text-decoration:none}.about-api-docs:hover{text-decoration:underline}
+.about-api-item{display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border-light);font-size:13px}.about-api-item:last-of-type{border:none}.about-api-path{font-size:12px;padding:2px 6px;border-radius:4px;background:var(--surface-alt);color:var(--primary);font-family:monospace;white-space:nowrap}.about-api-desc{color:var(--text2);font-size:12px}.about-api-group{margin-bottom:10px}.about-api-group:last-child{margin-bottom:0}.about-api-group-title{font-size:11px;font-weight:600;color:var(--text3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px}.about-api-badge{font-size:10px;padding:1px 6px;border-radius:4px;background:var(--surface-alt);color:var(--text3);font-family:monospace}
 </style>
