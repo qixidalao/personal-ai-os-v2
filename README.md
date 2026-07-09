@@ -391,5 +391,9 @@ git log --oneline -5
 
 ## License
 
-个人项目，当前未指定开源协议。  
-如需正式公开协作，建议后续补充 `LICENSE` 文件。
+GNU General Public License v3.0 (GPL-3.0)
+
+本项目采用 **GPL-3.0** 协议开源。  
+您可以自由使用、修改和分发本代码，但基于本项目的衍生作品也必须以 GPL-3.0 协议开源。
+
+完整协议文本见 [LICENSE](./LICENSE) 文件。
