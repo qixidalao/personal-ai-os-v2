@@ -219,6 +219,21 @@
               </div>
             </div>
           </div>
+          <!-- API 入口 -->
+          <div class="set-card">
+            <div class="set-card-header">🔌 API 入口</div>
+            <div class="set-body">
+              <div class="about-api-item"><code class="about-api-path">GET /</code><span class="about-api-desc">服务状态 / 前端页面</span></div>
+              <div class="about-api-item"><code class="about-api-path">POST /api/v1/chat</code><span class="about-api-desc">聊天请求</span></div>
+              <div class="about-api-item"><code class="about-api-path">GET /api/v1/settings</code><span class="about-api-desc">读取设置</span></div>
+              <div class="about-api-item"><code class="about-api-path">PUT /api/v1/settings</code><span class="about-api-desc">保存设置</span></div>
+              <div class="about-api-item"><code class="about-api-path">GET /api/v1/sessions</code><span class="about-api-desc">会话列表</span></div>
+              <div class="about-api-item"><code class="about-api-path">WS /ws/onebot</code><span class="about-api-desc">OneBot 反向 WebSocket</span></div>
+              <div class="about-api-item">
+                <a class="about-api-docs" href="https://github.com/qixidalao/personal-ai-os-v2/blob/master/docs/API/endpoints.md" target="_blank" rel="noopener">📖 完整 API 文档 ↗</a>
+              </div>
+            </div>
+          </div>
 
           <!-- 数据核弹 -->
           <div class="set-card" style="margin-top: 12px; border-color: var(--error)">
@@ -578,5 +593,6 @@ onUnmounted(() => { window.removeEventListener('resize', onResize); if (saveTime
 .set-modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
 .set-btn{padding:8px 16px!important;border-radius:6px!important;font-size:13px!important;border:none!important;cursor:pointer}.set-btn:disabled{opacity:.6;cursor:not-allowed}.ai-btn--ghost{background:var(--surface-alt);color:var(--text2)}.ai-btn--primary{background:var(--primary);color:#fff}
 @media (max-width: 767px){.set-content{padding:12px}.set-section{max-width:none}.set-modal{max-width:100%}.set-inline-row{flex-direction:column;align-items:stretch}.set-refresh-btn{height:32px}}
-.about-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}.about-info-item{display:flex;flex-direction:column;gap:2px;padding:8px 10px;background:var(--surface-alt);border-radius:6px}.about-info-label{font-size:11px;color:var(--text3)}.about-info-value{font-size:14px;font-weight:600;color:var(--text)}.about-link{color:var(--primary);text-decoration:none;cursor:pointer}.about-link:hover{text-decoration:underline}.about-desc{font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:6px}.about-motto{font-size:12px;color:var(--text3);font-style:italic}.about-tech-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.about-tech-item{display:flex;flex-direction:column;gap:1px;padding:6px 8px;background:var(--surface-alt);border-radius:4px}.about-tech-key{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}.about-tech-val{font-size:12px;color:var(--text)}.about-thanks-list{display:flex;flex-wrap:wrap;gap:6px}.about-thanks-tag{padding:4px 10px;border-radius:12px;background:var(--surface-alt);font-size:12px;color:var(--text2);border:1px solid var(--border-light)}
+.about-thanks-list{display:flex;flex-wrap:wrap;gap:6px}.about-thanks-tag{padding:4px 10px;border-radius:12px;background:var(--surface-alt);font-size:12px;color:var(--text2);border:1px solid var(--border-light)}
+.about-api-item{display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border-light);font-size:13px}.about-api-item:last-child{border:none}.about-api-path{font-size:12px;padding:2px 6px;border-radius:4px;background:var(--surface-alt);color:var(--primary);font-family:monospace;white-space:nowrap}.about-api-desc{color:var(--text2);font-size:12px}.about-api-docs{font-size:12px;color:var(--primary);text-decoration:none}.about-api-docs:hover{text-decoration:underline}
 </style>
