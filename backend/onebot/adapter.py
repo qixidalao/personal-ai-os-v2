@@ -313,9 +313,9 @@ class OneBotChatWorker:
         history.append({"role": "user", "content": text, "message_id": message_id})
         if len(history) > self.max_history:
             history.pop(0)
-
         settings = self._load_settings()
-        system_prompt = settings.get("systemPrompt", "你是一个智能AI助手，请友好地回答用户的问题。")
+        # QQ 独立 system prompt（与前端 systemPrompt 隔离）
+        system_prompt = settings.get("qq_systemPrompt") or "你是一个智能AI助手，请友好地回答用户的问题。"
 
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(history)
@@ -348,7 +348,6 @@ class OneBotChatWorker:
         if not parts:
             return None
         cmd = parts[0].lower()
-
         if cmd == "help":
             return (
                 "📋 可用命令：\n"
@@ -357,6 +356,9 @@ class OneBotChatWorker:
                 "/model      - 查看当前模型\n"
                 "/model xxx  - 全局匹配并切换模型\n"
                 "/models     - 查看所有已配置模型\n"
+                "/system     - 查看系统提示词\n"
+                "/system xxx - 设置系统提示词\n"
+                "/system -c  - 清空系统提示词（恢复默认）\n"
                 "/help       - 显示此帮助"
             )
 
@@ -374,6 +376,28 @@ class OneBotChatWorker:
 
         if cmd == "clear":
             return "✅ 对话历史已清除"
+
+        # ─── /system 命令 ─────────────────────────────
+        if cmd == "system":
+            settings = self._load_full_settings()
+            current = settings.get("qq_systemPrompt", "")
+            # 清空
+            if len(parts) >= 2 and parts[1] in ("-c", "clear"):
+                settings.pop("qq_systemPrompt", None)
+                self._save_settings(settings)
+                return "✅ 系统提示词已清空（恢复默认）"
+            # 查看
+            if len(parts) == 1:
+                if current:
+                    return f"📝 当前系统提示词：\n{current}"
+                return "📝 当前系统提示词：（默认）\n你是一个智能AI助手，请友好地回答用户的问题。\n\n💡 发送 /system <内容> 设置，/system -c 清空"
+            # 设置
+            new_prompt = text[8:].strip()  # 去掉 "/system " 前缀
+            if not new_prompt:
+                return "❌ 内容不能为空"
+            settings["qq_systemPrompt"] = new_prompt
+            self._save_settings(settings)
+            return f"✅ 系统提示词已设置！\n📝 {new_prompt[:100]}{'…' if len(new_prompt) > 100 else ''}"
 
         if cmd not in ("model", "models"):
             return f"❌ 未知命令: /{cmd}\n输入 /help 查看可用命令"
@@ -697,3 +721,14 @@ class OneBotChatWorker:
         except Exception:
             pass
         return {}
+
+    def _save_settings(self, settings: dict):
+        """保存完整配置到 settings.json"""
+        try:
+            from pathlib import Path
+            Path("storage/settings.json").write_text(
+                json.dumps(settings, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            logger.error(f"[OneBotChat] ❌ 保存配置失败: {exc}")
