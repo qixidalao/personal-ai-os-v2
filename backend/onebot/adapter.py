@@ -348,7 +348,7 @@ class OneBotChatWorker:
         if not parts:
             return None
         cmd = parts[0].lower()
-        if cmd == "help":
+        if cmd in ("help", "h"):
             return (
                 "📋 可用命令：\n"
                 f"/history N  - 设置上下文记忆条数（当前 {self.max_history}）\n"
