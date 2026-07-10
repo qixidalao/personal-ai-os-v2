@@ -39,9 +39,10 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'vendor': ['vue', 'vue-router', 'pinia'],
-          'editor': ['monaco-editor'],
-          'markdown': ['marked', 'highlight.js', 'katex'],
+          vendor: ['vue', 'vue-router', 'pinia'],
+          editor: ['monaco-editor'],
+          markdown: ['marked', 'highlight.js'],
+          math: ['katex'],
         },
       },
     },

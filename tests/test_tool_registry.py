@@ -10,8 +10,14 @@ class TestToolRegistry:
     """ToolRegistry 核心功能测试"""
 
     def setup_method(self):
-        """每个测试前清理注册表"""
+        """每个测试前隔离注册表，同时保留应用的原始工具。"""
+        self._original_tools = ToolRegistry._tools.copy()
         ToolRegistry._tools.clear()
+
+    def teardown_method(self):
+        """恢复原始工具，避免测试状态泄漏到后续模块。"""
+        ToolRegistry._tools.clear()
+        ToolRegistry._tools.update(self._original_tools)
 
     def test_register_decorator(self):
         """测试装饰器方式注册工具"""

@@ -33,41 +33,50 @@ router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 SETTINGS_FILE = Path("storage/settings.json")
 STREAM_LOG_FILE = Path("storage/logs/stream_debug.jsonl")
 
-# ── 异步日志 ──────────────────────────────────────────────
-_log_queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=500)
+# ── 异步日志（按事件循环隔离，避免跨 loop 复用 asyncio 对象）────────────
+_log_queue: asyncio.Queue[dict] | None = None
 _log_task: asyncio.Task | None = None
+_log_loop: asyncio.AbstractEventLoop | None = None
 
 
-async def _log_writer():
+async def _log_writer(queue: asyncio.Queue[dict]):
     buf: list[str] = []
     while True:
         try:
-            record = await asyncio.wait_for(_log_queue.get(), timeout=1.0)
+            record = await asyncio.wait_for(queue.get(), timeout=1.0)
             buf.append(json.dumps(record, ensure_ascii=False, default=str))
         except asyncio.TimeoutError:
             pass
+        except asyncio.CancelledError:
+            break
         except Exception:
             continue
-        if len(buf) >= 20 or (_log_queue.empty() and buf):
+        if len(buf) >= 20 or (queue.empty() and buf):
             try:
                 STREAM_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-                with STREAM_LOG_FILE.open("a", encoding="utf-8") as f:
-                    f.write("\n".join(buf) + "\n")
+                with STREAM_LOG_FILE.open("a", encoding="utf-8") as file:
+                    file.write("\n".join(buf) + "\n")
             except Exception:
                 pass
             buf = []
 
 
 async def _ensure_log_writer():
-    global _log_task
-    if _log_task is None or _log_task.done():
-        _log_task = asyncio.create_task(_log_writer())
+    global _log_queue, _log_task, _log_loop
+    current_loop = asyncio.get_running_loop()
+    if _log_loop is not current_loop or _log_task is None or _log_task.done():
+        _log_loop = current_loop
+        _log_queue = asyncio.Queue(maxsize=500)
+        _log_task = current_loop.create_task(_log_writer(_log_queue))
 
 
 def _stream_log(request_id: str, event: str, **data: Any) -> None:
+    queue = _log_queue
+    if queue is None:
+        return
     try:
         record = {"ts": time.time(), "rid": request_id, "event": event, **data}
-        _log_queue.put_nowait(record)
+        queue.put_nowait(record)
     except asyncio.QueueFull:
         pass
 
@@ -143,6 +152,16 @@ def _tool_result_to_str(result: Any) -> str:
         return json.dumps(result, ensure_ascii=False)
     except Exception:
         return str(result)
+
+
+def _extract_reasoning_from_message(message: dict) -> str:
+    """提取不同 OpenAI 兼容服务使用的推理字段。"""
+    return (
+        message.get("reasoning_content")
+        or message.get("reasoning")
+        or message.get("reasoning_text")
+        or ""
+    )
 
 
 def _split_think_tags(content: str, existing_reasoning: str = "") -> tuple[str, str]:
@@ -442,14 +461,15 @@ async def _stream_events(req: ChatRequest, request_id: str, request: Request | N
 async def chat_completion_stream(req: ChatRequest, fastapi_request: Request):
     """
     SSE 流式接口。
-    
+
     架构：生产者-消费者爆发缓冲
       - 生产者：_stream_events() 以 LLM 原生速度产生事件（可能 burst）
       - 缓冲队列：asyncio.Queue(maxsize=200) 蓄住 burst
       - 消费者：以恒定 5ms 间隔从队列 drain，输出平滑 SSE 流
-      
+
     效果：无论 LLM API 怎么爆发，用户看到的是 ~200 tokens/s 的稳定输出
     """
+    await _ensure_log_writer()
     request_id = uuid.uuid4().hex[:10]
     _stream_log(request_id, "http_stream_open", model=req.model)
 

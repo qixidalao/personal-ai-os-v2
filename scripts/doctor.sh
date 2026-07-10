@@ -1,70 +1,80 @@
-#!/bin/bash
-# ============================================
-# Personal AI OS — 环境检查脚本
-# ============================================
+#!/usr/bin/env bash
+# Personal AI OS — environment diagnostics
 
-echo "🔍 Personal AI OS — 环境诊断"
-echo "=============================="
+set -u
 
-# Python
-echo ""
-echo "📋 Python:"
-if command -v python3 &> /dev/null; then
-    echo "   ✅ $(python3 --version)"
-else
-    echo "   ❌ 未安装"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOCAL_BIN="${HOME}/.local/bin"
+
+# Interactive shells may know the local Node installation while scripts do not.
+if [[ -d "$LOCAL_BIN" ]]; then
+    export PATH="$LOCAL_BIN:$PATH"
 fi
 
-# Node.js
-echo ""
-echo "📋 Node.js:"
-if command -v node &> /dev/null; then
-    echo "   ✅ $(node --version)"
+ok()   { printf '   ✅ %s\n' "$*"; }
+warn() { printf '   ⚠️  %s\n' "$*"; }
+fail() { printf '   ❌ %s\n' "$*"; }
+section() { printf '\n📋 %s:\n' "$1"; }
+
+printf '🔍 Personal AI OS — 环境诊断\n'
+printf '==============================\n'
+
+section "Python"
+if command -v python3 >/dev/null 2>&1; then
+    ok "$(python3 --version 2>&1) ($(command -v python3))"
 else
-    echo "   ❌ 未安装"
+    fail "未安装"
 fi
 
-# npm
-echo ""
-echo "📋 npm:"
-if command -v npm &> /dev/null; then
-    echo "   ✅ $(npm --version)"
+section "Node.js"
+if command -v node >/dev/null 2>&1; then
+    ok "$(node --version) ($(command -v node))"
 else
-    echo "   ❌ 未安装"
+    fail "未安装；已检查 PATH 和 $LOCAL_BIN"
 fi
 
-# 目录结构
-echo ""
-echo "📋 项目目录:"
-DIRS=("config" "backend" "frontend" "runtime" "tools" "prompts" "plugins" "storage" "scripts" "tests")
+section "npm"
+if command -v npm >/dev/null 2>&1; then
+    ok "$(npm --version) ($(command -v npm))"
+else
+    fail "未安装；已检查 PATH 和 $LOCAL_BIN"
+fi
+
+section "项目目录"
+DIRS=(config backend frontend runtime tools prompts plugins storage scripts tests)
 for dir in "${DIRS[@]}"; do
-    if [ -d "$(dirname "$0")/../$dir" ]; then
-        echo "   ✅ $dir/"
+    if [[ -d "$PROJECT_ROOT/$dir" ]]; then
+        ok "$dir/"
     else
-        echo "   ❌ $dir/ — 缺失"
+        fail "$dir/ — 缺失"
     fi
 done
 
-# 配置文件
-echo ""
-echo "📋 配置文件:"
-for file in "$(dirname "$0")/../config"/*.yaml; do
-    if [ -f "$file" ]; then
-        echo "   ✅ $(basename "$file")"
-    fi
-done
+section "配置文件"
+shopt -s nullglob
+config_files=("$PROJECT_ROOT"/config/*.yaml)
+if ((${#config_files[@]} == 0)); then
+    fail "未找到 YAML 配置"
+else
+    for file in "${config_files[@]}"; do
+        ok "$(basename "$file")"
+    done
+fi
 
-# 端口检查
-echo ""
-echo "📋 端口状态:"
+section "端口状态"
 for port in 8080 3000; do
-    if ss -tlnp | grep -q ":$port "; then
-        echo "   ⚠️  端口 $port 已被占用"
+    socket_info="$(ss -H -ltnp "sport = :$port" 2>/dev/null || true)"
+    if [[ -n "$socket_info" ]]; then
+        process_info="$(sed -n 's/.*users:(("\([^"]*\)",pid=\([0-9]*\).*/\1, PID \2/p' <<<"$socket_info" | head -n 1)"
+        if [[ -n "$process_info" ]]; then
+            warn "端口 $port 已被占用（$process_info）"
+        else
+            warn "端口 $port 已被占用"
+        fi
     else
-        echo "   ✅ 端口 $port 可用"
+        ok "端口 $port 可用"
     fi
 done
 
-echo ""
-echo "=============================="
-echo "✅ 诊断完成"
+printf '\n==============================\n'
+printf '✅ 诊断完成\n'

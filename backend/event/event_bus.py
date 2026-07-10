@@ -3,9 +3,10 @@
 支持异步发布/订阅、事件过滤、优先级
 """
 import asyncio
+import inspect
 import time
 import uuid
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -20,6 +21,7 @@ class EventPriority(Enum):
 @dataclass
 class Event:
     """统一事件对象"""
+
     type: str
     data: Any = None
     source: str = ""
@@ -40,28 +42,21 @@ class EventBus:
 
     async def emit(self, event_type: str, data: Any = None, **kwargs) -> Event:
         """发布事件"""
-        event = Event(
-            type=event_type,
-            data=data,
-            **kwargs
-        )
+        event = Event(type=event_type, data=data, **kwargs)
 
-        # 记录历史
         self._history.append(event)
         if len(self._history) > self._max_history:
             self._history.pop(0)
 
-        # 获取订阅者
-        subscribers = self._subscribers.get(event_type, []) + \
-                      self._subscribers.get("*", [])
-
+        subscribers = (
+            self._subscribers.get(event_type, [])
+            + self._subscribers.get("*", [])
+        )
         if not subscribers:
             return event
 
-        # 异步派发
         tasks = []
         for subscriber in subscribers:
-            # 应用过滤器
             if self._should_filter(event_type, event):
                 continue
             tasks.append(self._safe_dispatch(subscriber, event))
@@ -71,9 +66,11 @@ class EventBus:
 
     def on(self, event_type: str):
         """装饰器方式订阅事件"""
+
         def decorator(func):
             self.subscribe(event_type, func)
             return func
+
         return decorator
 
     def subscribe(self, event_type: str, callback: Callable):
@@ -83,7 +80,7 @@ class EventBus:
         self._subscribers[event_type].append(callback)
 
     def unsubscribe(self, event_type: str, callback: Callable):
-        """取消订阅"""
+        """取消订阅事件"""
         if event_type in self._subscribers:
             self._subscribers[event_type].remove(callback)
 
@@ -93,7 +90,11 @@ class EventBus:
             self._filters[event_type] = []
         self._filters[event_type].append(filter_func)
 
-    def get_history(self, event_type: Optional[str] = None, limit: int = 50) -> List[Event]:
+    def get_history(
+        self,
+        event_type: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Event]:
         """获取事件历史"""
         if event_type:
             return [e for e in self._history[-limit:] if e.type == event_type]
@@ -106,19 +107,22 @@ class EventBus:
     def _should_filter(self, event_type: str, event: Event) -> bool:
         """检查是否应该过滤该事件"""
         filters = self._filters.get(event_type, []) + self._filters.get("*", [])
-        return any(f(event) for f in filters)
+        return any(filter_func(event) for filter_func in filters)
 
     async def _safe_dispatch(self, callback: Callable, event: Event):
         """安全派发事件"""
         try:
-            if asyncio.iscoroutinefunction(callback):
+            if inspect.iscoroutinefunction(callback):
                 await callback(event)
             else:
                 callback(event)
-        except Exception as e:
-            # 派发异常不中断主流程
-            await self.emit("error", {
-                "source": "event_bus.dispatch",
-                "error": str(e),
-                "event_type": event.type
-            })
+        except Exception as exc:
+            # 派发异常不中断主流程。
+            await self.emit(
+                "error",
+                {
+                    "source": "event_bus.dispatch",
+                    "error": str(exc),
+                    "event_type": event.type,
+                },
+            )
