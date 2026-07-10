@@ -344,7 +344,7 @@ class OneBotChatWorker:
     # ─── 命令系统 ────────────────────────────────────
 
     async def _handle_command(self, text: str) -> str | None:
-        parts = text.split()
+        parts = text[1:].strip().split()
         if not parts:
             return None
         cmd = parts[0].lower()
