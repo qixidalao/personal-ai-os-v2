@@ -362,7 +362,7 @@ class OneBotChatWorker:
                 "/help       - 显示此帮助"
             )
 
-        if cmd == "history":
+        if cmd in ("history", "his"):
             if len(parts) < 2:
                 return f"当前上下文: {self.max_history} 条\n用法: /history N（1-100）"
             try:
@@ -374,11 +374,11 @@ class OneBotChatWorker:
             self.max_history = n
             return f"✅ 上下文记忆已设为 {n} 条"
 
-        if cmd == "clear":
+        if cmd in ("clear", "c"):
             return "✅ 对话历史已清除"
 
         # ─── /system 命令 ─────────────────────────────
-        if cmd == "system":
+        if cmd in ("system", "s"):
             settings = self._load_full_settings()
             current = settings.get("qq_systemPrompt", "")
             # 清空
@@ -392,14 +392,15 @@ class OneBotChatWorker:
                     return f"📝 当前系统提示词：\n{current}"
                 return "📝 当前系统提示词：（默认）\n你是一个智能AI助手，请友好地回答用户的问题。\n\n💡 发送 /system <内容> 设置，/system -c 清空"
             # 设置
-            new_prompt = text[8:].strip()  # 去掉 "/system " 前缀
+            new_prompt = text[8:].strip() if cmd == "system" else text[3:].strip()
             if not new_prompt:
                 return "❌ 内容不能为空"
             settings["qq_systemPrompt"] = new_prompt
             self._save_settings(settings)
             return f"✅ 系统提示词已设置！\n📝 {new_prompt[:100]}{'…' if len(new_prompt) > 100 else ''}"
 
-        if cmd not in ("model", "models"):
+        # ─── /model 和 /models ──────────────────────────
+        if cmd not in ("model", "models", "m", "ms"):
             return f"❌ 未知命令: /{cmd}\n输入 /help 查看可用命令"
 
         settings = self._load_full_settings()
@@ -407,7 +408,7 @@ class OneBotChatWorker:
         current_model = current_provider.get("model", "未知")
         providers = settings.get("providers", [])
 
-        if cmd == "models":
+        if cmd in ("models", "ms"):
             if len(parts) != 1:
                 return "❌ /models 不接受参数；发送 /models 查看全部模型"
             lines = [f"🤖 当前模型: {current_model}"]
@@ -464,8 +465,6 @@ class OneBotChatWorker:
             f"✅ 已切换模型: {requested_model}\n"
             f"🔗 provider: {matched_provider.get('name', '?')}"
         )
-
-    # ─── 撤回处理 ────────────────────────────────────
 
     async def remove_from_context(self, message_id: str, user_id: int, group_id: int):
         """撤回消息时从上下文移除对应消息"""
