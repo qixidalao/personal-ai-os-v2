@@ -21,7 +21,6 @@ from backend.sessions import router as sessions_router
 from backend.settings_api import router as settings_router
 from backend.chat_api import router as chat_router
 from backend.tools_api import router as tools_router
-# ─── OneBot QQ 机器人 ──────────────────────────────
 from backend.onebot import router as onebot_router, register_event_handlers, OneBotChatWorker
 
 
@@ -31,14 +30,13 @@ async def lifespan(app: FastAPI):
     logger = app.state.logger
     logger.info("🚀 Personal AI OS V2 启动中...")
 
-    # ─── 注册 OneBot 事件处理器 ────────────────
     register_event_handlers(event_bus)
     chat_worker = OneBotChatWorker(event_bus)
     await chat_worker.start()
     app.state.onebot_chat_worker = chat_worker
-    logger.info("🤖 QQ 机器人 (OneBot) 适配器已加载")
+    logger.info("🤖 OneBot 适配器已加载")
 
-    await event_bus.emit("system.start", {"version": "2.0.0"})
+    await event_bus.emit("system.start", {"version": app.version})
     yield
 
     logger.info("👋 Personal AI OS V2 关闭中...")
@@ -53,7 +51,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Personal AI OS V2",
-        description="运行于 Android Termux 的个人 AI 操作系统",
+        description="个人 AI 工作台与本地智能中枢",
         version="2.0.0",
         lifespan=lifespan,
     )
@@ -72,13 +70,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # API 路由
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(gateway_router, prefix="/api/v1/gateway")
     app.include_router(stream_router, prefix="/api/v1/stream")
-    # ─── OneBot WS 路由（NapCat 反向连接） ──
     app.include_router(onebot_router)
-    # ─── 原有 WS 路由 ──────────────────────
     app.include_router(ws_router, prefix="/ws")
     app.include_router(sessions_router)
     app.include_router(settings_router)
@@ -96,7 +91,7 @@ def create_app() -> FastAPI:
     else:
         @app.get("/")
         async def api_welcome():
-            return {"app": "Personal AI OS V2", "version": "2.0.0", "status": "running"}
+            return {"app": "Personal AI OS V2", "version": app.version, "status": "running"}
         logger.warning("⚠️  无前端 UI")
 
     return app
