@@ -1,10 +1,7 @@
-# ============================================================
 # Personal AI OS — 应用主配置
-# ============================================================
 app:
   name: "Personal AI OS"
   version: "2.0.0"
-  description: "运行于 Android Termux 的个人 AI 操作系统"
   debug: false
   dev_mode: false
 
