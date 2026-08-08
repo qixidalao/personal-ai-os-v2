@@ -1,77 +1,51 @@
 # Personal AI OS V2 / hhs
 
-> 一个面向个人使用的 AI 工作台与本地智能中枢。  
-> 前端采用 Vue 3 + 自绘组件，后端采用 FastAPI + SSE/WebSocket/EventBus，目标是把聊天、工具调用、Agent、记忆、工作区、插件与自动化能力整合成一个可长期演进的个人 AI OS。
+> 面向个人使用的 AI 工作台与本地智能中枢。
+> 当前核心由 Vue 3 + TypeScript 前端、FastAPI 后端、SSE/WebSocket、EventBus、工具系统与 OneBot 适配组成。
 
 ![Vue](https://img.shields.io/badge/Vue-3.x-42b883)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.x-009688)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6)
 ![Python](https://img.shields.io/badge/Python-3.x-3776ab)
-![Status](https://img.shields.io/badge/status-personal_project-blue)
-
----
 
 ## 项目定位
 
-Personal AI OS V2，内部常称为 **hhs 服务**，是一个个人 AI 网关/工作台项目。它不是单纯的聊天页面，而是围绕“个人 AI 操作系统”设计的一套可扩展框架：
+Personal AI OS V2（内部称 **hhs**）是一个可长期演进的个人 AI 网关 / 工作台。
 
-- 用一个 Web UI 管理聊天、模型、提示词、工具、Agent、记忆、插件与工作区。
-- 后端统一承接 LLM 请求、流式输出、工具调用、事件分发与第三方入口。
-- 前端优先自绘组件，尽量保持界面和交互可控。
-- 配置、工具、插件、提示词都尽量文件化/模块化，方便长期折腾和迭代。
+当前设计重点：
 
-核心理念：
+- Web UI 统一管理聊天、模型、提示词、工具、Agent 与工作区能力。
+- FastAPI 统一承接 LLM 请求、流式输出、工具调用和事件分发。
+- 配置采用 YAML 模板 + 本地运行时设置的方式管理。
+- 聊天优先采用流式传输，并保留推理内容、工具调用等事件。
+- 支持 OneBot 11 反向 WebSocket 作为外部入口。
 
-1. **Everything is Config**：模型、工具、UI、工作区、提示词都尽量配置化。
-2. **Everything is Event**：内部能力通过事件总线衔接。
-3. **Everything is Plugin**：能力模块尽量插件化、可扩展。
-4. **Everything is Stream**：聊天与工具执行结果优先支持流式反馈。
+## 当前架构
 
----
+```text
+personal-ai-os-v2/
+├── backend/       # FastAPI 后端、API、SSE、WebSocket、EventBus、OneBot
+├── frontend/      # Vue 3 + TypeScript + Vite
+├── config/        # YAML 默认配置模板
+├── runtime/       # 运行时能力
+├── tools/         # 工具注册与实现
+├── prompts/       # 提示词
+├── scripts/       # 启停、构建、维护脚本
+├── docs/          # API、架构、部署、协议等文档
+├── tests/         # 测试
+└── storage/       # 本地运行数据（不提交 Git）
+```
 
-## 当前主要能力
+### 后端
 
-### AI 聊天
-
-- 支持前端聊天会话管理。
-- 支持后端 OpenAI-compatible Chat API 转发。
-- 支持 SSE 流式输出。
-- 支持 Markdown 渲染、代码高亮、KaTeX、Mermaid 等富文本能力。
-- 支持消息重试、复制、历史会话加载。
-- 支持 AI 消息中的推理内容/思考流与工具流收纳展示。
-
-### 设置中心
-
-- 设置页面支持从后端加载与落盘。
-- 支持模型、Provider、Agent 参数、主题、插件、提示词等配置入口。
-- 全局设置保存在本地 `storage/settings.json`，默认不会提交到 Git。
-
-### Agent 与工具系统
-
-- 后端有工具 API 与工具注册入口。
-- Agent 参数支持独立配置，例如 system prompt、temperature、top_p、presence penalty、最大工具调用轮数等。
-- 工具调用轨迹可返回给前端展示。
-
-### OneBot / QQ 机器人适配
-
-项目中已包含 OneBot 11 反向 WebSocket 适配代码：
-
-- 后端路由：`/ws/onebot`
-- 适配目录：`backend/onebot/`
-- Termux/NapCat 部署脚本：`scripts/termux-onebot.sh`
-
-当前属于“代码已就绪，按需部署”的状态。
-
-### 本地 Web 服务
-
-- 后端：FastAPI + Uvicorn
-- 前端：Vue 3 + Vite 构建后由后端静态托管
-- 默认端口：`8080`
-- 默认监听：`0.0.0.0`
-
----
-
-## 技术栈
+- FastAPI + Uvicorn
+- SSE 流式聊天
+- WebSocket
+- EventBus / 事件流
+- OpenAI-compatible LLM 请求适配
+- Tool Registry / 工具调用
+- OneBot 11 反向 WebSocket
+- 本地设置与运行时数据
 
 ### 前端
 
@@ -80,313 +54,128 @@ Personal AI OS V2，内部常称为 **hhs 服务**，是一个个人 AI 网关/�
 - Vite
 - Pinia
 - Vue Router
-- 自绘 UI 组件库：`frontend/components/ui/`
-- Markdown：`marked`
-- 代码高亮：`highlight.js`
-- 公式：`katex`
-- 图表：`mermaid`
-- 图标：`lucide-vue-next`
+- marked / highlight.js / KaTeX / Mermaid
+- Monaco Editor
+- 自绘 UI 组件
 
-### 后端
+## 已具备能力
 
-- Python 3
-- FastAPI
-- Uvicorn
-- SSE / WebSocket
-- 内部 EventBus
-- OpenAI-compatible LLM 请求适配
+### 聊天与流式输出
 
----
+- 会话管理
+- OpenAI-compatible Chat API
+- SSE 流式输出
+- 推理内容展示
+- 工具调用轨迹
+- Markdown / 代码 / 数学公式 / Mermaid
+- 消息重试、复制、历史加载
 
-## 目录结构
+### 工具与 Agent
 
-```text
-personal-ai-os-v2/
-├── backend/                 # FastAPI 后端服务
-│   ├── main.py              # 后端入口，注册 API/WS/静态前端
-│   ├── chat_api.py          # 聊天与 LLM 调用接口
-│   ├── sessions.py          # 会话 API
-│   ├── settings_api.py      # 设置读取/保存 API
-│   ├── tools_api.py         # 工具 API
-│   ├── event/               # 事件总线相关
-│   ├── onebot/              # OneBot/QQ 机器人适配
-│   └── ...
-├── frontend/                # Vue 3 前端
-│   ├── pages/               # 页面
-│   ├── components/          # 组件
-│   │   └── ui/              # 自绘 UI 组件库
-│   ├── stores/              # Pinia 状态
-│   ├── services/            # 前端 API 调用
-│   └── assets/styles/       # 全局样式
-├── config/                  # 默认配置模板
-├── prompts/                 # 提示词模板
-├── runtime/                 # LLM / Agent / Memory / RAG 运行时目录
-├── tools/                   # 工具能力目录
-├── scripts/                 # 启停、构建、维护脚本
-├── docs/                    # 项目文档
-├── tests/                   # 测试
-└── storage/                 # 本地数据目录，默认不提交 Git
-```
+- 工具注册与调用 API
+- 工具执行轨迹
+- Agent 参数配置
+- 文件、搜索、Shell、浏览器、Python 等工具入口
 
----
+### OneBot
 
-## 快速启动
+- `backend/onebot/`
+- OneBot 11 反向 WebSocket
+- `/ws/onebot`
+- 支持与 NapCat 等 OneBot 实现对接
 
-> 推荐使用项目内置的 `hhs.sh` 脚本，它会自动构建前端、释放端口、启动后端。
+## 配置
 
-```bash
-cd /home/qixi/mcp_agent/workspace/personal-ai-os-v2
-./scripts/hhs.sh start
-```
+默认配置位于 `config/`，由 `backend/config/loader.py` 自动加载 YAML。
 
-启动后访问：
+常见配置包括：
 
-```text
-http://localhost:8080
+- `app.yaml`：服务、端口、上传等基础配置
+- `api.yaml`：Provider 与 API 参数模板
+- `models.yaml`：模型配置模板
+- `agents.yaml`：Agent 配置
+- `memory.yaml` / `rag.yaml`：记忆与 RAG 配置
+- `plugins.yaml`：插件配置
+- `prompts.yaml`：提示词配置
+- `profiles.yaml`：Profile 配置
+- `shortcuts.yaml`：快捷操作
+- `theme.yaml` / `ui.yaml`：界面配置
+- `tools.yaml`：工具配置
 
----
+敏感信息和个人运行数据应保存在 `storage/` 或本地环境变量中，不应提交到仓库。
 
-## 常用管理命令
+## 启动
+
+项目内置脚本负责构建前端并启动后端。具体脚本以 `scripts/` 当前内容为准，避免依赖机器相关的绝对路径。
+
+后端也可以直接启动：
 
 ```bash
-# 启动服务：自动释放端口、构建前端、启动后端
-./scripts/hhs.sh start
-
-# 重启服务：推荐日常使用
-./scripts/hhs.sh restart
-
-# 停止服务
-./scripts/hhs.sh stop
-
-# 只重新构建前端
-./scripts/hhs.sh rebuild
-
-# 查看服务状态与日志尾部
-./scripts/hhs.sh status
-```
-
-日志位置：
-
-```bash
-/tmp/hhs.log
-```
-
-PID 文件：
-
-```bash
-/tmp/hhs.pid
-```
-
-默认端口：
-
-```bash
-8080
-```
-
-可通过环境变量修改端口：
-
-```bash
-HHS_PORT=8090 ./scripts/hhs.sh restart
-```
-
----
-
-## 手动开发命令
-
-### 后端
-
-```bash
-cd /home/qixi/mcp_agent/workspace/personal-ai-os-v2
 python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8080
 ```
 
-### 前端
+前端开发：
 
 ```bash
 cd frontend
 npm install
 npm run dev
+```
+
+构建与类型检查：
+
+```bash
 npm run build
 npm run typecheck
 ```
 
-前端构建产物会输出到：
+默认服务端口为 `8080`，可通过配置调整。
+
+## API
+
+主要入口以当前代码为准，核心包括：
 
 ```text
-frontend/dist/
+GET  /
+POST /api/v1/chat/...
+GET  /api/v1/settings/...
+PUT  /api/v1/settings/...
+WS   /ws/...
+WS   /ws/onebot
 ```
 
-后端检测到 `frontend/dist/index.html` 存在时，会自动托管前端页面。
+完整接口说明见 `docs/API/`。
 
----
+## 隐私与仓库卫生
 
-## 配置说明
+`.gitignore` 已忽略：
 
-### 默认配置目录
+- 前端构建产物与 `node_modules/`
+- `.env` 与本地虚拟环境
+- Python 缓存与测试产物
+- `storage/` 运行数据
+- 数据库、日志、JSONL、临时文件
+- 编辑器和系统临时文件
 
-```text
-config/
-```
-
-其中包含：
-
-- `config/app.yaml`：应用与服务配置
-- `config/api.yaml`：API Provider 默认模板
-- `config/models.yaml`：模型配置
-- `config/agents.yaml`：Agent 配置
-- `config/prompts.yaml`：提示词配置
-- `config/plugins.yaml`：插件配置
-- `config/theme.yaml`：主题配置
-- `config/tools.yaml`：工具配置
-- `config/workspace.yaml`：工作区配置
-
-### 本地运行时数据
-
-```text
-storage/
-```
-
-这里保存运行时产生的数据，例如：
-
-- 会话记录
-- 用户设置
-- 上传文件
-- 工作区缓存
-- 导出/备份
-
-`storage/` 属于个人数据目录，默认不应该上传公开仓库。
-
----
-
-## 隐私与敏感信息
-
-项目已经在 `.gitignore` 中忽略常见敏感/运行时目录：
-
-```gitignore
-node_modules/
-dist/
-.env
-*.pyc
-__pycache__/
-.venv/
-venv/
-*.db
-*.sqlite3
-storage/conversations/*
-storage/files/*
-storage/workspace/*
-storage/cache/*
-storage/exports/*
-storage/backups/*
-*.log
-```
-
-注意：
-
-- `config/api.yaml` 中只保留空的 `api_key: ""` 模板。
-- 真正的 API Key 和个人设置通常保存在本地 `storage/settings.json`。
-- 聊天记录、历史会话、上传文件等不应提交到 GitHub。
-- 提交前可执行下面的命令检查是否误提交敏感文件：
-
-```bash
-git ls-files | grep -Ei 'apikey|api_key|token|secret|password|\.env|storage/'
-```
-
----
-
-## API 与入口
-
-常用入口：
-
-```text
-GET  /                         前端页面或服务状态
-POST /api/v1/chat              聊天请求
-GET  /api/v1/settings          读取设置
-PUT  /api/v1/settings          保存设置
-POST /api/v1/settings/reset    重置设置
-WS   /ws/onebot                OneBot 反向 WebSocket
-```
-
-更多 API 可参考：
-
-```text
-docs/API/endpoints.md
-```
-
----
-
-## Git 使用
-
-当前远程仓库：
-
-```text
-git@github.com:qixidalao/personal-ai-os-v2.git
-```
-
-日常提交：
+提交前建议检查：
 
 ```bash
 git status
-git add README.md
-git commit -m "docs: update README"
-git push
+git ls-files | grep -Ei 'apikey|api_key|token|secret|password|\.env|storage/'
 ```
 
-查看最近提交：
+## 开发原则
 
-```bash
-git log --oneline -5
-```
+- **配置与代码分离**：默认模板不保存个人密钥和运行数据。
+- **事件驱动**：跨模块通信优先使用 EventBus。
+- **流式优先**：LLM 与工具过程尽量保留实时事件。
+- **以代码为准**：README、文档和 Roadmap 不应描述尚未实现的功能。
+- **避免机器绑定**：文档和脚本不要依赖个人绝对路径、内网 IP 或临时环境。
 
----
+## 当前维护状态
 
-## 当前状态
-
-已完成/已具备：
-
-- Vue 3 前端框架
-- FastAPI 后端框架
-- hhs 快捷启停脚本
-- 基础聊天 UI
-- 会话 API
-- 设置 API 与本地落盘
-- SSE/WS 基础设施
-- EventBus
-- 工具 API
-- Agent 参数配置
-- LLM 思考流/工具流展示
-- OneBot 适配代码
-- GitHub 远程仓库同步
-
-仍在演进：
-
-- 更丝滑的前端流式输出/打字机体验
-- Agent 工作流体验
-- 多模态能力
-- RAG/记忆系统深度整合
-- 插件市场/插件加载机制
-- QQ 机器人实际部署流程
-
----
-
-## Roadmap
-
-- **M1 基础框架**：FastAPI + Vue3 + SSE + 聊天 + 会话
-- **M2 事件系统**：统一 EventBus 与事件协议
-- **M3 工具系统**：工具注册、调用、轨迹展示
-- **M4 配置中心**：设置页面、配置落盘、热更新方向
-- **M5 Workspace**：本地工作区与文件能力
-- **M6 Memory / RAG**：长期记忆与检索增强
-- **M7 Plugin**：插件生态与扩展协议
-- **M8 Agent OS**：多 Agent、多入口、多设备协同
-
----
+本仓库处于持续开发状态。项目功能会随着实际代码演进，README 只记录当前已经存在或明确稳定的能力，不再维护过时的里程碑清单或固定机器环境说明。
 
 ## License
 
-GNU General Public License v3.0 (GPL-3.0)
-
-本项目采用 **GPL-3.0** 协议开源。  
-您可以自由使用、修改和分发本代码，但基于本项目的衍生作品也必须以 GPL-3.0 协议开源。
-
-完整协议文本见 [LICENSE](./LICENSE) 文件。
+GPL-3.0。详见 `LICENSE`。
