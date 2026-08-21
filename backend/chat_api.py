@@ -147,13 +147,27 @@ def _normalize_tool_schema(ts) -> dict:
 
 def _tool_result_to_str(result: Any) -> str:
     if isinstance(result, str):
-        return result
+_tool_result_pruner = None
+
+
+def _tool_result_to_str(result: Any) -> str:
+    global _tool_result_pruner
+    if isinstance(result, str):
+        text = result
+    else:
+        try:
+            text = json.dumps(result, ensure_ascii=False)
+        except Exception:
+            text = str(result)
+    # 超长工具结果裁剪，减少上下文 token 占用（记忆层扩展 2026-08-21）
+    # 裁剪失败时安全降级为原文，不影响主流程
     try:
-        return json.dumps(result, ensure_ascii=False)
+        if _tool_result_pruner is None:
+            from runtime.memory.pruner import ToolResultPruner
+            _tool_result_pruner = ToolResultPruner()
+        return _tool_result_pruner.prune(text)
     except Exception:
-        return str(result)
-
-
+        return text
 def _extract_reasoning_from_message(message: dict) -> str:
     """提取不同 OpenAI 兼容服务使用的推理字段。"""
     return (

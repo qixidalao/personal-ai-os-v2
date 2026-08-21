@@ -79,3 +79,25 @@ class SessionMemory(BaseMemory):
     async def clear(self) -> bool:
         self._messages.clear()
         return True
+
+
+# ============================================================
+# 记忆层扩展模块（2026-08-21）
+# pruner             : 工具结果裁剪（确定性省 token，对应 dsh compaction-tool-result-pruner）
+# token_meter        : token 计量（压缩触发决策，对应 dsh tokenMeter）
+# conversation_summary: LLM 对话摘要压缩（动态记忆核心，对应 dsh compaction-basic）
+# ============================================================
+from .pruner import PRUNE_MARKER, ToolResultPruner
+from .token_meter import TokenMeter, TokenPressure
+from .conversation_summary import ConversationSummary
+
+__all__ = [
+    "MemoryItem",
+    "BaseMemory",
+    "SessionMemory",
+    "ToolResultPruner",
+    "PRUNE_MARKER",
+    "TokenMeter",
+    "TokenPressure",
+    "ConversationSummary",
+]
