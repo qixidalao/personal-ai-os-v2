@@ -145,8 +145,6 @@ def _normalize_tool_schema(ts) -> dict:
     return {"type": "object", "properties": clean}
 
 
-def _tool_result_to_str(result: Any) -> str:
-    if isinstance(result, str):
 _tool_result_pruner = None
 
 
@@ -168,6 +166,8 @@ def _tool_result_to_str(result: Any) -> str:
         return _tool_result_pruner.prune(text)
     except Exception:
         return text
+
+
 def _extract_reasoning_from_message(message: dict) -> str:
     """提取不同 OpenAI 兼容服务使用的推理字段。"""
     return (
