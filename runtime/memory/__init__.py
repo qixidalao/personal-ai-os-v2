@@ -87,9 +87,20 @@ class SessionMemory(BaseMemory):
 # token_meter        : token 计量（压缩触发决策，对应 dsh tokenMeter）
 # conversation_summary: LLM 对话摘要压缩（动态记忆核心，对应 dsh compaction-basic）
 # ============================================================
+# 记忆层扩展模块（2026-08-21 v2）
+# pruner              : 工具结果裁剪（确定性省 token）
+# token_meter         : token 计量
+# conversation_summary: LLM 摘要压缩（省 token 辅助）
+# vector_memory       : 向量联想记忆（类人脑语义检索 - 核心）
+# long_memory         : 长期记忆（时间线）
+# memory_service      : 记忆自取服务（自动检索注入，模型无感）
+# ============================================================
 from .pruner import PRUNE_MARKER, ToolResultPruner
 from .token_meter import TokenMeter, TokenPressure
 from .conversation_summary import ConversationSummary
+from .vector_memory import VectorMemory, cosine_similarity
+from .long_memory import LongMemory
+from .memory_service import MemoryService, get_memory_service, reset_memory_service
 
 __all__ = [
     "MemoryItem",
@@ -100,4 +111,10 @@ __all__ = [
     "TokenMeter",
     "TokenPressure",
     "ConversationSummary",
+    "VectorMemory",
+    "cosine_similarity",
+    "LongMemory",
+    "MemoryService",
+    "get_memory_service",
+    "reset_memory_service",
 ]

@@ -357,6 +357,27 @@ async def _stream_events(req: ChatRequest, request_id: str, request: Request | N
         if role == "ai":
             role = "assistant"
         normalized_messages.append({"role": role, "content": m.get("content", "")})
+    # ─── 记忆自取注入（类人脑回忆，模型无感）────────────────
+    # 系统自动用当前语境联想检索历史记忆并注入上下文；
+    # LLM 无需调用任何工具去查记忆，就像自己记得一样。
+    try:
+        from runtime.memory.memory_service import get_memory_service
+        _mem_svc = get_memory_service()
+        if _mem_svc.enabled:
+            _q = ""
+            for _m in reversed(normalized_messages):
+                if _m.get("role") == "user":
+                    _q = _m.get("content", "")
+                    break
+            if _q:
+                _recalls = await _mem_svc.recall(_q, top_k=_mem_svc.top_k)
+                _block = _mem_svc.build_injection(_recalls)
+                if _block:
+                    normalized_messages.insert(0, {"role": "system", "content": _block})
+                    logger.info(f"🧠 记忆自取: 注入 {len(_recalls)} 条联想记忆，rid={request_id}")
+                await _mem_svc.auto_remember(_q)
+    except Exception:
+        pass  # 记忆层故障不阻断主流程
 
     openai_tools = _get_enabled_tools()
     logger.info(f"📤 发送给 LLM，rid={request_id} tool_count={len(openai_tools)} messages_count={len(normalized_messages)}")
