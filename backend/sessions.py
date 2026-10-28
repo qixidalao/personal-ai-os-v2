@@ -2,7 +2,8 @@
 Personal AI OS — 会话管理 API
 每个会话一个独立 JSON 文件，落盘存储
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from pathlib import Path
 import json
@@ -28,6 +29,12 @@ class Message(BaseModel):
     traceExpanded: bool = False
     reasoningExpanded: bool = False
     toolsExpanded: bool = False
+    usage: dict | None = None
+    createdAt: int | None = None
+    finishedAt: int | None = None
+    tokPerSec: int | None = None
+    cachedTokens: int | None = None
+    cumTokens: int | None = None
 
 
 class SessionMeta(BaseModel):
@@ -170,3 +177,80 @@ async def patch_session_meta(session_id: str, meta: SessionMetaPatch):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ── 对话导出 ──────────────────────────────────────────────
+
+@router.get("/{session_id}/export")
+async def export_session(session_id: str, format: str = "markdown"):
+    """导出会话为 Markdown 或 JSON 格式。"""
+    data = _read_session(session_id)
+
+    if format.lower() == "json":
+        return Response(
+            content=json.dumps(data.model_dump(), ensure_ascii=False, indent=2),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{session_id}.json"'},
+        )
+
+    lines = []
+    meta = data.meta
+    lines.append(f"# {meta.title or '对话记录'}")
+    lines.append("")
+    lines.append(f"- **会话 ID**: {session_id}")
+    lines.append(f"- **创建时间**: {meta.created_at or '未知'}")
+    lines.append(f"- **更新时间**: {meta.updated_at or '未知'}")
+    if meta.tag:
+        lines.append(f"- **标签**: {meta.tag}")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    for msg in data.messages:
+        role_label = "👤 用户" if msg.role == "user" else "🤖 助手"
+        lines.append(f"## {role_label}")
+        lines.append("")
+
+        if msg.reasoning:
+            lines.append("<details>")
+            lines.append("<summary>🧠 思考过程</summary>")
+            lines.append("")
+            lines.append(msg.reasoning)
+            lines.append("</details>")
+            lines.append("")
+
+        if msg.content:
+            lines.append(msg.content)
+            lines.append("")
+
+        if msg.tools:
+            lines.append("<details>")
+            lines.append("<summary>🔧 工具调用</summary>")
+            lines.append("")
+            for tool in msg.tools:
+                lines.append(f"- **{tool.get('name', 'unknown')}: {tool.get('result', '""')[:200]}")
+            lines.append("</details>")
+            lines.append("")
+
+        lines.append("---")
+        lines.append("")
+
+    markdown = "\n".join(lines)
+    return PlainTextResponse(
+        content=markdown,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{session_id}.md"'},
+    )
+
+
+@router.post("/{session_id}/duplicate")
+async def duplicate_session(session_id: str):
+    """复制一个会话，创建新的会话 ID。"""
+    data = _read_session(session_id)
+    new_id = f"s{uuid.uuid4().hex[:8]}"
+    data.meta.id = new_id
+    data.meta.title = f"{data.meta.title or '对话'} (副本)"
+    now = datetime.now().isoformat()
+    data.meta.created_at = now
+    data.meta.updated_at = now
+    _write_session(new_id, data)
+    return {"session": data.model_dump(), "new_id": new_id}
