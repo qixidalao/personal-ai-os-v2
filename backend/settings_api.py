@@ -20,6 +20,7 @@ import tools.search      # noqa: F401
 import tools.shell       # noqa: F401
 import tools.browser     # noqa: F401
 import tools.python      # noqa: F401
+import tools.skills       # noqa: F401
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 
@@ -44,6 +45,9 @@ def _default_settings() -> dict:
             {"name": "代码专家", "content": "你是资深全栈工程师。回答简洁，优先给代码。", "isDefault": False},
         ],
         "agentTools": [],  # 由 _read_settings 自动从 ToolRegistry 扫描合并
+        "enabledSkills": ["web-research", "interest-scout", "frontend-craft"],
+        "interestsEnabled": True,
+        "userInterests": [],
         "agentParams": {"temperature": 0.3, "maxTokens": 4096, "topP": 0.9, "presencePenalty": 0, "maxToolRounds": 6, "agentPrompt": ""},
         "theme": "dark",
         "codeFont": "JetBrains Mono",

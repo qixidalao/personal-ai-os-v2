@@ -9,6 +9,7 @@ Personal AI OS — Agent 工具调用 API
 """
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import traceback
@@ -26,6 +27,8 @@ import tools.search  # noqa: F401
 import tools.shell  # noqa: F401
 import tools.browser  # noqa: F401
 import tools.python  # noqa: F401
+import tools.skills  # noqa: F401
+import tools.media  # noqa: F401
 
 router = APIRouter(prefix="/api/v1/tools", tags=["tools"])
 
@@ -217,7 +220,7 @@ async def call_tool(payload: ToolCallCompatRequest):
 
     logger.info(f"🛠️ POST /api/v1/tools/call → {name} args={json.dumps(args, ensure_ascii=False)}")
     try:
-        result = ToolRegistry.call(name, **args)
+        result = await asyncio.to_thread(ToolRegistry.call, name, **args)
         logger.info(f"✅ {name} 调用成功 result_len={len(str(result))}")
         return {
             "ok": True,
@@ -241,3 +244,64 @@ async def call_tool(payload: ToolCallCompatRequest):
             "traceback": traceback.format_exc(limit=8),
             "time": datetime.now().isoformat(),
         }
+
+# ─── OneBot 发送消息 ──────────────────────────────────────
+@router.post("/onebot/send")
+async def onebot_send(data: dict):
+    """发送 QQ 消息（通过已连接的 NapCat）。"""
+    from backend.onebot.adapter import _napcat_ws, send_group_msg, send_private_msg
+
+    if _napcat_ws is None:
+        raise HTTPException(status_code=503, detail="NapCat 未连接")
+
+    msg_type = data.get("type", "private")
+    message = data.get("message", "")
+    try:
+        if msg_type == "group":
+            group_id = data.get("group_id")
+            if not group_id:
+                raise HTTPException(status_code=400, detail="group_id 必填")
+            await send_group_msg(_napcat_ws, group_id, message)
+            return {"status": "ok", "sent_to": f"group:{group_id}"}
+
+        user_id = data.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="user_id 必填")
+        await send_private_msg(_napcat_ws, user_id, message)
+        return {"status": "ok", "sent_to": f"user:{user_id}"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ============================================================================
+# Spill 溢出存储 API（借鉴 DeepSeek Harness spill 机制）
+# 超长工具结果落盘后，前端/用户按定位符读取完整内容
+# ============================================================================
+
+@router.get("/spills/{session_id}/{filename}")
+async def read_spill(session_id: str, filename: str):
+    """按定位符读取溢出存储的完整工具结果。
+
+    locator 格式: spill://<session_id>/<filename>
+    对应 URL:     /api/v1/tools/spills/<session_id>/<filename>
+    """
+    from runtime.memory.spill_store import SpillStore, LOCATOR_PREFIX
+
+    store = SpillStore()
+    locator = f"{LOCATOR_PREFIX}{session_id}/{filename}"
+    content = store.resolve(locator)
+    if content is None:
+        raise HTTPException(status_code=404, detail=f"spill 内容不存在: {locator}")
+    return {"locator": locator, "content": content}
+
+
+@router.get("/spills")
+async def list_spills(session_id: str = "default", limit: int = 20):
+    """列出某会话的 spill 定位符（按时间倒序）。"""
+    from runtime.memory.spill_store import SpillStore
+
+    store = SpillStore()
+    refs = store.list_refs(session_id=session_id, limit=limit)
+    return {"session_id": session_id, "refs": refs}
