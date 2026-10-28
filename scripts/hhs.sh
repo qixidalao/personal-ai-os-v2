@@ -16,6 +16,11 @@ PORT="${HHS_PORT:-8080}"
 LOG_FILE="/tmp/hhs.log"
 PID_FILE="/tmp/hhs.pid"
 NODE_BIN="/home/qixi/.local/bin/node"
+PYTHON_BIN="/home/qixi/mcp_agent/.venv/bin/python"
+
+if [ ! -x "$PYTHON_BIN" ]; then
+  PYTHON_BIN="$(command -v python3 || true)"
+fi
 
 cd "$SCRIPT_DIR"
 
@@ -85,7 +90,7 @@ start_service() {
   info "启动 hhs 服务 (端口 $PORT)..."
 
   # 后台启动，把 PID 记下来
-  nohup python3 -m uvicorn backend.main:app \
+  nohup "$PYTHON_BIN" -m uvicorn backend.main:app \
     --host 0.0.0.0 \
     --port "$PORT" \
     > "$LOG_FILE" 2>&1 &
@@ -105,6 +110,24 @@ start_service() {
     tail -10 "$LOG_FILE"
     return 1
   fi
+}
+
+start_service_dev() {
+  if [ -n "$(find_pid_on_port)" ]; then
+    err "端口 $PORT 已被占用！先执行 ./scripts/hhs.sh stop"
+    return 1
+  fi
+
+  info "启动 hhs 服务 (前台模式, 端口 $PORT)..."
+  echo ""
+  echo "  📍  http://localhost:$PORT"
+  echo "  ⌨️  按 Ctrl+C 停止服务"
+  echo ""
+
+  # 前台运行，日志直接打终端
+  "$PYTHON_BIN" -m uvicorn backend.main:app \
+    --host 0.0.0.0 \
+    --port "$PORT"
 }
 
 stop_service() {
@@ -149,7 +172,6 @@ show_status() {
     echo "  查看全部日志: tail -f $LOG_FILE"
   else
     warn "hhs 服务未运行"
-    # 检查日志是否有残影
     if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
       echo ""
       echo "  ── 上次运行日志最后几行 ──"
@@ -165,6 +187,11 @@ case "${1:-start}" in
     kill_port
     build_frontend || warn "前端构建跳过（不影响后端启动）"
     start_service
+    ;;
+  dev)
+    kill_port
+    build_frontend || warn "前端构建跳过"
+    start_service_dev
     ;;
   restart)
     info "===== 重启 hhs 服务 ====="
@@ -184,9 +211,10 @@ case "${1:-start}" in
     show_status
     ;;
   *)
-    echo "用法: $0 {start|restart|stop|rebuild|status}"
+    echo "用法: $0 {start|dev|restart|stop|rebuild|status}"
     echo ""
-    echo "  start     启动服务（自动杀端口+构建+启动）"
+    echo "  start     后台启动服务（自动杀端口+构建+启动）"
+    echo "  dev       前台启动服务（日志实时输出到终端）"
     echo "  restart   重启服务"
     echo "  stop      停止服务"
     echo "  rebuild   只重新构建前端"

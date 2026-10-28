@@ -94,6 +94,7 @@ class SessionMemory(BaseMemory):
 # vector_memory       : 向量联想记忆（类人脑语义检索 - 核心）
 # long_memory         : 长期记忆（时间线）
 # memory_service      : 记忆自取服务（自动检索注入，模型无感）
+# spill_store         : 溢出存储（超长工具结果落盘 + 定位符恢复，对应 dsh spill）
 # ============================================================
 from .pruner import PRUNE_MARKER, ToolResultPruner
 from .token_meter import TokenMeter, TokenPressure
@@ -101,6 +102,14 @@ from .conversation_summary import ConversationSummary
 from .vector_memory import VectorMemory, cosine_similarity
 from .long_memory import LongMemory
 from .memory_service import MemoryService, get_memory_service, reset_memory_service
+from .spill_store import (
+    SpillStore,
+    SpillRef,
+    get_spill_store,
+    reset_spill_store,
+    parse_locator,
+    LOCATOR_PREFIX,
+)
 
 __all__ = [
     "MemoryItem",
@@ -117,4 +126,10 @@ __all__ = [
     "MemoryService",
     "get_memory_service",
     "reset_memory_service",
+    "SpillStore",
+    "SpillRef",
+    "get_spill_store",
+    "reset_spill_store",
+    "parse_locator",
+    "LOCATOR_PREFIX",
 ]
