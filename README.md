@@ -29,6 +29,7 @@ personal-ai-os-v2/
 ├── config/        # YAML 默认配置模板
 ├── runtime/       # 运行时能力
 ├── tools/         # 工具注册与实现
+├── skills/        # 只读 Markdown Agent Skills（按需加载）
 ├── prompts/       # 提示词
 ├── scripts/       # 启停、构建、维护脚本
 ├── docs/          # API、架构、部署、协议等文档
@@ -70,12 +71,14 @@ personal-ai-os-v2/
 - Markdown / 代码 / 数学公式 / Mermaid
 - 消息重试、复制、历史加载
 
-### 工具与 Agent
+### 工具、Agent Skills 与兴趣偏好
 
-- 工具注册与调用 API
-- 工具执行轨迹
-- Agent 参数配置
-- 文件、搜索、Shell、浏览器、Python 等工具入口
+- 工具中心统一展示已注册工具；启用状态会真实控制发送给模型的函数定义。
+- 本地 Agent Skills 使用 `skills/<id>/SKILL.md`；模型先看名称和简介，相关时再调用 `read_skill` 读取指南。
+- Skill 文件是纯 Markdown，不会被当作 Python 插件执行；社区代码安装目前不开放。
+- 兴趣页只保存用户明确填写的偏好；启用后作为上下文注入，用户仍决定何时进行网络搜索。
+- 同步工具在线程池执行，避免慢速网页搜索或本地工具占住 ASGI 事件循环。
+- Skill 编写约定和扩展边界见 `docs/Architecture/agent-skills.md`。
 
 ### OneBot
 
