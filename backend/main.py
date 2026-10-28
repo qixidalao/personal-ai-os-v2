@@ -20,7 +20,12 @@ from backend.websocket import router as ws_router
 from backend.sessions import router as sessions_router
 from backend.settings_api import router as settings_router
 from backend.chat_api import router as chat_router
+from backend.media_api import router as media_router
+from backend.image_enhance_api import router as image_enhance_router
+from backend.skills_api import router as skills_router
 from backend.tools_api import router as tools_router
+from backend.health_api import router as health_router
+from backend.middleware.logging import RequestLoggingMiddleware
 from backend.onebot import router as onebot_router, register_event_handlers, OneBotChatWorker
 
 
@@ -52,7 +57,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Personal AI OS V2",
         description="个人 AI 工作台与本地智能中枢",
-        version="2.0.0",
+        version="2.1.0",
         lifespan=lifespan,
     )
 
@@ -69,6 +74,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(RequestLoggingMiddleware)
 
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(gateway_router, prefix="/api/v1/gateway")
@@ -78,7 +84,11 @@ def create_app() -> FastAPI:
     app.include_router(sessions_router)
     app.include_router(settings_router)
     app.include_router(chat_router)
+    app.include_router(media_router)
+    app.include_router(image_enhance_router)
+    app.include_router(skills_router)
     app.include_router(tools_router)
+    app.include_router(health_router)
 
     static_dir = Path("frontend/dist")
     if static_dir.exists() and (static_dir / "index.html").exists():
@@ -109,3 +119,4 @@ if __name__ == "__main__":
         port=server_config.get("port", 8080),
         reload=server_config.get("dev_mode", False),
     )
+
