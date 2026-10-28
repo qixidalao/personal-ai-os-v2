@@ -28,6 +28,7 @@ import tools.search  # noqa: F401
 import tools.shell  # noqa: F401
 import tools.browser  # noqa: F401
 import tools.python  # noqa: F401
+import tools.skills  # noqa: F401
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 SETTINGS_FILE = Path("storage/settings.json")
@@ -119,7 +120,17 @@ def _normalize_base_url(base_url: str) -> str:
 
 def _get_enabled_tools() -> list[dict]:
     tools = []
+    configured_items = _read_settings().get("agentTools", [])
+    if not isinstance(configured_items, list):
+        configured_items = []
+    configured = {
+        item.get("name"): item
+        for item in configured_items
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
     for ts in ToolRegistry.list():
+        if configured.get(ts.name, {}).get("enabled", True) is False:
+            continue
         schema = _normalize_tool_schema(ts)
         tools.append({"type": "function", "function": {"name": ts.name, "description": ts.description, "parameters": schema}})
     return tools
@@ -202,6 +213,7 @@ async def _stream_llm_completion(
     full_reasoning = ""
     tool_calls_acc: dict[int, dict[str, Any]] = {}
     finish_reason = None
+    last_usage: dict | None = None
     sse_buf = b""
     raw_chunks = 0
 
@@ -238,6 +250,10 @@ async def _stream_llm_completion(
                             chunk = json.loads(payload)
                         except json.JSONDecodeError:
                             continue
+
+                        # 收集 token 用量（OpenAI 兼容流式末 chunk 携带 usage）
+                        if chunk.get("usage"):
+                            last_usage = chunk["usage"]
 
                         choices = chunk.get("choices", [])
                         if not choices:
@@ -297,7 +313,7 @@ async def _stream_llm_completion(
     _stream_log(request_id, "llm_stream_done", round=round_idx,
                 reasoning_len=len(full_reasoning), content_len=len(full_content),
                 tool_calls=len(tool_calls_list), finish_reason=finish_reason)
-    yield {"type": "done", "message": message, "finish_reason": finish_reason}
+    yield {"type": "done", "message": message, "finish_reason": finish_reason, "usage": last_usage}
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +395,37 @@ async def _stream_events(req: ChatRequest, request_id: str, request: Request | N
     except Exception:
         pass  # 记忆层故障不阻断主流程
 
+    settings = _read_settings()
+    enabled_skills = settings.get("enabledSkills", ["web-research", "interest-scout", "frontend-craft"])
+    if not isinstance(enabled_skills, list):
+        enabled_skills = []
+    try:
+        from runtime.skills.registry import skill_catalogue
+        context_parts = []
+        catalogue = skill_catalogue([item for item in enabled_skills if isinstance(item, str)])
+        if catalogue:
+            context_parts.append(catalogue)
+        interests = settings.get("userInterests", [])
+        if settings.get("interestsEnabled", True) and isinstance(interests, list):
+            cleaned = list(dict.fromkeys(
+                item.strip()[:80] for item in interests
+                if isinstance(item, str) and item.strip()
+            ))[:30]
+            if cleaned:
+                context_parts.append(
+                    "用户主动保存的兴趣偏好（仅在相关时用于个性化，不代表当前任务要求联网）：\n"
+                    + "\n".join(f"- {item}" for item in cleaned)
+                )
+        if context_parts:
+            normalized_messages.insert(0, {"role": "system", "content": "\n\n".join(context_parts)})
+    except Exception as exc:
+        logger.warning(f"Agent Skill/兴趣上下文加载失败，继续普通对话: {exc}")
+
     openai_tools = _get_enabled_tools()
+    enabled_tool_names = {
+        item["function"]["name"] for item in openai_tools
+        if isinstance(item.get("function"), dict) and item["function"].get("name")
+    }
     logger.info(f"📤 发送给 LLM，rid={request_id} tool_count={len(openai_tools)} messages_count={len(normalized_messages)}")
     _stream_log(request_id, "stream_events_start", model=req.model,
                 base_url=_normalize_base_url(req.baseUrl), messages=len(normalized_messages),
@@ -395,7 +441,6 @@ async def _stream_events(req: ChatRequest, request_id: str, request: Request | N
         body["tools"] = openai_tools
         body["tool_choice"] = "auto"
 
-    settings = _read_settings()
     agent_params = settings.get("agentParams", {}) or {}
     MAX_TOOL_ROUNDS = int(agent_params.get("maxToolRounds", 6))
 
@@ -429,6 +474,10 @@ async def _stream_events(req: ChatRequest, request_id: str, request: Request | N
                 message = stream_event.get("message", {}) or {}
                 content_accumulated = message.get("content", "") or content_accumulated
                 tool_calls = message.get("tool_calls") or []
+                # 透传 token 用量（若无 tool_calls 则这是最终 round）
+                usage = stream_event.get("usage")
+                if usage and not tool_calls:
+                    yield {"type": "usage", "data": usage, "round": round_idx}
                 _stream_log(request_id, "round_llm_done", round=round_idx,
                             reasoning_len=len(message.get("reasoning_content", reasoning_accumulated) or ""),
                             content_len=len(content_accumulated), tool_calls=len(tool_calls))
@@ -467,7 +516,9 @@ async def _stream_events(req: ChatRequest, request_id: str, request: Request | N
             ok = True
             error = ""
             try:
-                tool_result = ToolRegistry.call(fn_name, **fn_args)
+                if fn_name not in enabled_tool_names:
+                    raise PermissionError(f"工具未启用或不存在: {fn_name}")
+                tool_result = await asyncio.to_thread(ToolRegistry.call, fn_name, **fn_args)
                 result_str = _tool_result_to_str(tool_result)
             except Exception as exc:
                 ok = False
@@ -490,19 +541,15 @@ async def _stream_events(req: ChatRequest, request_id: str, request: Request | N
 
 
 # ---------------------------------------------------------------------------
-# /stream —— SSE 流式接口（爆发缓冲 + 恒定速率输出）
+# /stream —— SSE 流式接口（直通 SSE 流式输出）
 # ---------------------------------------------------------------------------
 @router.post("/stream")
 async def chat_completion_stream(req: ChatRequest, fastapi_request: Request):
     """
-    SSE 流式接口。
+    SSE stream with direct async iteration.
 
-    架构：生产者-消费者爆发缓冲
-      - 生产者：_stream_events() 以 LLM 原生速度产生事件（可能 burst）
-      - 缓冲队列：asyncio.Queue(maxsize=200) 蓄住 burst
-      - 消费者：以恒定 5ms 间隔从队列 drain，输出平滑 SSE 流
-
-    效果：无论 LLM API 怎么爆发，用户看到的是 ~200 tokens/s 的稳定输出
+    Yielding each upstream event directly lets the ASGI client provide backpressure,
+    avoiding an extra producer task, burst queue, and artificial per-event delay.
     """
     await _ensure_log_writer()
     request_id = uuid.uuid4().hex[:10]
@@ -510,29 +557,8 @@ async def chat_completion_stream(req: ChatRequest, fastapi_request: Request):
 
     async def event_generator():
         seq = 0
-        queue: asyncio.Queue = asyncio.Queue(maxsize=200)  # ★ 爆发缓冲池
-
-        # ── 生产者：尽快从 LLM 拉取，放入队列 ──
-        async def _producer():
-            try:
-                async for event in _stream_events(req, request_id, request=fastapi_request):
-                    await queue.put(event)
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                raise
-            finally:
-                await queue.put(None)  # 哨兵：生产结束
-
-        producer_task = asyncio.create_task(_producer())
-
         try:
-            # ── 消费者：恒定速率 drain ──
-            while True:
-                event = await queue.get()
-                if event is None:  # 哨兵 → 流结束
-                    break
-
+            async for event in _stream_events(req, request_id, request=fastapi_request):
                 seq += 1
                 typ = event.get("type")
                 if typ in {"reasoning", "content", "tool_round_start", "tool_call_start",
@@ -542,25 +568,15 @@ async def chat_completion_stream(req: ChatRequest, fastapi_request: Request):
                                 content_len=len(event.get("content", "") or ""),
                                 preview=_preview(event.get("content", "")))
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-                # ★ 恒定 5ms 间隔 — 无论 LLM 怎么 burst，输出始终平稳
-                await asyncio.sleep(0.005)
 
             _stream_log(request_id, "http_sse_done_marker", seq=seq + 1)
             yield "data: [DONE]\n\n"
         except asyncio.CancelledError:
             _stream_log(request_id, "http_stream_cancelled", seq=seq)
-            producer_task.cancel()
+            raise
         except Exception as exc:
             _stream_log(request_id, "http_stream_exception", error=str(exc))
-            producer_task.cancel()
             raise
-        finally:
-            if not producer_task.done():
-                producer_task.cancel()
-            try:
-                await producer_task
-            except (asyncio.CancelledError, Exception):
-                pass
 
     return StreamingResponse(
         event_generator(),
