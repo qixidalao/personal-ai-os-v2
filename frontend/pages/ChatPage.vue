@@ -2,11 +2,37 @@
   <div class="chat-page">
     <div class="chat-msgs" ref="msgBox" @scroll.passive="onChatScroll">
       <div v-if="allMsgs.length === 0" class="chat-empty">
-        <div class="chat-empty__icon">🧠</div>
-        <div class="chat-empty__title">Personal AI OS</div>
-        <div class="chat-empty__hint">V2.0 · 思考流 / 工具流收纳盒 · 移动端优先</div>
-        <div class="chat-chips">
-          <button class="chat-chip" v-for="c in suggestions" :key="c" @click="handleSend(c)">{{ c }}</button>
+        <div class="welcome">
+          <div class="welcome-badge">PERSONAL AI OS</div>
+          <h1 class="welcome-title">今天想一起做什么？</h1>
+          <p class="welcome-sub">图片理解 · 语音输入 · 文件分析 · 工具调用 · 本地技能，全都在这一条输入框里。</p>
+
+          <div class="welcome-caps">
+            <button class="cap" @click="goPage('/workspace')">
+              <span class="cap-icon">📝</span>
+              <span class="cap-text"><b>工作台</b><em>用 Markdown 记下想法</em></span>
+            </button>
+            <button class="cap" @click="goPage('/tools')">
+              <span class="cap-icon">🧰</span>
+              <span class="cap-text"><b>工具中心</b><em>查看模型能调用什么</em></span>
+            </button>
+            <button class="cap" @click="goPage('/agent')">
+              <span class="cap-icon">🤖</span>
+              <span class="cap-text"><b>智能体</b><em>配置人设与技能</em></span>
+            </button>
+            <button class="cap" @click="goPage('/history')">
+              <span class="cap-icon">🗂️</span>
+              <span class="cap-text"><b>历史记录</b><em>找回以前的对话</em></span>
+            </button>
+          </div>
+
+          <div class="chat-chips">
+            <button class="chat-chip" v-for="c in suggestions" :key="c" @click="handleSend(c)">{{ c }}</button>
+          </div>
+
+          <div class="welcome-tip">
+            提示：直接粘贴图片、拖入文件，或按 <kbd>Ctrl</kbd> + <kbd>K</kbd> 打开命令面板
+          </div>
         </div>
       </div>
 
@@ -108,7 +134,7 @@
             <div v-if="!m.streaming" class="msg__actions">
               <button class="msg__act" @click="copyMsg(m, $event)" title="复制">📋</button>
               <button class="msg__act" @click="deleteMsg(m)" title="删除此后所有消息">🗑️</button>
-              <button v-if="m.role === 'ai'" class="msg__act" @click="retryMsg(m)" title="重试">🔄</button>
+              <button v-if="m.role === 'ai'" class="msg__act" @click="speakMsg(m)" title="朗读">🔊</button><button v-if="m.role === 'ai'" class="msg__act" @click="retryMsg(m)" title="重试">🔄</button>
               <button v-if="m.role === 'user'" class="msg__act" @click="editMsg(m)" title="编辑">✏️</button>
             </div>
             <div v-if="!m.streaming && (m.usage || m.createdAt || m.finishedAt)" class="msg__meta">
@@ -143,8 +169,12 @@
           <button class="chat-edit-cancel" @click="cancelEdit">取消</button>
         </div>
         <div class="chat-input-row">
-          <textarea ref="inputRef" v-model="input" class="chat-input" placeholder="输入消息... / 斜杠命令" rows="1" @keydown="handleKey" @input="autoSize" @paste="handlePaste" />
-          <button v-if="!loading" :class="['chat-send', { disabled: !input.trim() }]" @click="handleSend()"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9Z"/></svg></button>
+          <button v-if="!loading && !isRecording" class="chat-voice" @click="startVoice" title="语音输入">🎤</button>
+          <button v-if="!loading" class="chat-file-btn" @click="fileInputRef?.click()" title="上传文件">📎</button>
+          <input ref="fileInputRef" type="file" style="display:none" accept=".txt,.md,.pdf,.py,.js,.ts,.vue,.json,.yaml,.yml,.csv,.html,.css" @change="handleFileSelect" />
+          <button v-if="isRecording" class="chat-voice recording" @click="stopVoice" title="停止录音">🔴</button>
+          <textarea ref="inputRef" v-model="input" class="chat-input" placeholder="输入消息... / 斜杠命令 / 粘贴图片" rows="1" @keydown="handleKey" @input="autoSize" @paste="handlePaste" />
+          <button v-if="!loading" :class="['chat-send', { disabled: !input.trim() && !attachments.length }]" @click="handleSend()"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9Z"/></svg></button>
           <button v-else class="chat-send stop" @click="stopGen" title="停止生成"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
         </div>
       </div>
@@ -174,7 +204,7 @@ interface Message {
   id: string; role: Role; content: string; streaming?: boolean
   branches?: string[]; branchIdx?: number; toolCall?: ToolCall; toolExpanded?: boolean
   reasoning?: string; tools?: TraceTool[]; traceExpanded?: boolean; reasoningExpanded?: boolean; toolsExpanded?: boolean; segments?: ChatSegment[]
-  usage?: any; createdAt?: number; finishedAt?: number; tokPerSec?: number; cachedTokens?: number; cumTokens?: number
+  usage?: any; images?: string[]; createdAt?: number; finishedAt?: number; tokPerSec?: number; cachedTokens?: number; cumTokens?: number
 }
 interface MathBlock { placeholder: string; html: string }
 
@@ -197,7 +227,10 @@ const streamIntervalRef = ref<number | null>(null)
 const apiError = ref('')
 const editingMsg = ref<Message | null>(null)
 const attachments = ref<{ name: string; data: any }[]>([])
+const isRecording = ref(false)
+const recognitionRef = ref<any>(null)
 const inputRef = ref<HTMLTextAreaElement>()
+const fileInputRef = ref<HTMLInputElement>()
 const msgBox = ref<HTMLElement>()
 const isMobile = computed(() => window.innerWidth < 768)
 const suggestions = ['💬 你是谁？', '🔧 系统状态', '📊 有什么 API', '🚀 /help 帮助']
@@ -513,9 +546,86 @@ function formatJson(value: any) { try { return typeof value === 'string' ? value
 async function loadDisplayLimit() { try { const resp = await fetch(`${API}/api/v1/settings`); if (resp.ok) { const settings = await resp.json(); if (typeof settings.displayLimit === 'number' && settings.displayLimit >= 0) { shouldScrollAfterLimitChange.value = true; displayLimit.value = settings.displayLimit } } } catch { /* 静默 */ } }
 function loadMore() { shouldScrollAfterLimitChange.value = false; displayLimit.value += 20 }
 function handleKey(e: KeyboardEvent) { if (e.key === 'Escape' && editingMsg.value) { cancelEdit(); return }; if (e.key !== 'Enter') return; if (window.innerWidth < 768 || e.shiftKey) return; e.preventDefault(); handleSend() }
+function startVoice() {
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    alert('浏览器不支持语音识别，请使用 Chrome/Edge')
+    return
+  }
+  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  const recognition = new SpeechRecognition()
+  recognition.lang = 'zh-CN'
+  recognition.continuous = false
+  recognition.interimResults = true
+  recognitionRef.value = recognition
+  recognition.onstart = () => { isRecording.value = true }
+  recognition.onend = () => { isRecording.value = false }
+  recognition.onresult = (event: any) => {
+    let final = ''
+    let interim = ''
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) final += event.results[i][0].transcript
+      else interim += event.results[i][0].transcript
+    }
+    if (final) input.value = (input.value || '') + final
+    else if (interim) input.value = (input.value || '').replace(/\[录音中.*?\]$/, '') + ' [录音中' + interim + ']'
+    autoSize()
+  }
+  recognition.onerror = (e: any) => { console.error('voice error', e); isRecording.value = false }
+  recognition.start()
+}
+function stopVoice() {
+  if (recognitionRef.value) { recognitionRef.value.stop(); recognitionRef.value = null }
+  isRecording.value = false
+  input.value = (input.value || '').replace(/\s*\[录音中.*?\]$/, '')
+}
+
+async function handleFileSelect(e: Event) {
+  const target = e.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+  target.value = ''
+  
+  const maxSize = 5 * 1024 * 1024
+  if (file.size > maxSize) { alert('文件超过 5MB 限制'); return }
+  
+  const form = new FormData()
+  form.append('file', file)
+  
+  try {
+    const resp = await fetch(`${API}/api/v1/media/upload-file`, { method: 'POST', body: form })
+    if (!resp.ok) throw new Error(`上传失败 ${resp.status}`)
+    const data = await resp.json()
+    if (data.text) {
+      const fileHint = `[文件: ${file.name} (${Math.round(file.size / 1024)}KB)]\n${data.text.slice(0, 2000)}${data.text.length > 2000 ? '...' : ''}`
+      input.value = (input.value || '') + (input.value ? '\n' : '') + fileHint
+      autoSize()
+    }
+  } catch (err: any) {
+    alert('文件上传失败: ' + err.message)
+  }
+}
+
 function handlePaste(e: ClipboardEvent) { const items = e.clipboardData?.items; if (!items) return; for (let i = 0; i < items.length; i++) { if (items[i].type.startsWith('image/')) { const f = items[i].getAsFile(); if (f) attachments.value.push({ name: f.name || '图片', data: f }) } } }
 function autoSize() { nextTick(() => { const el = inputRef.value; if (!el) return; el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 120)}px` }) }
 function stopGen() { if (abortRef.value) { abortRef.value.abort(); abortRef.value = null }; if (streamIntervalRef.value !== null) { clearInterval(streamIntervalRef.value); streamIntervalRef.value = null }; const streamingMsg = allMsgs.value.find(m => m.streaming); if (streamingMsg) streamingMsg.streaming = false; loading.value = false; flushSync(); afterRender() }
+
+async function uploadAttachments(): Promise<string[]> {
+  const urls: string[] = []
+  for (const att of attachments.value) {
+    if (!att.data) continue
+    const form = new FormData()
+    form.append('file', att.data)
+    try {
+      const resp = await fetch(`${API}/api/v1/media/upload`, { method: 'POST', body: form })
+      if (resp.ok) {
+        const data = await resp.json()
+        if (data.url) urls.push(data.url)
+      }
+    } catch (e) { console.error('upload failed', e) }
+  }
+  attachments.value = []
+  return urls
+}
 
 async function buildRequestContext(untilIdx?: number) {
   const settingsResp = await fetch(`${API}/api/v1/settings`)
@@ -525,10 +635,32 @@ async function buildRequestContext(untilIdx?: number) {
   let provider: any = null
   if (settings.providers && modelName) provider = settings.providers.find((p: any) => p.models && p.models.includes(modelName))
   if (!provider && settings.providers?.length) provider = settings.providers.find((p: any) => p.models?.length) || settings.providers[0]
-  const history: { role: string; content: string }[] = []
+  const history: { role: string; content: string | any[] }[] = []
   if (Array.isArray(settings.prompts)) { const def = settings.prompts.find((p: any) => p.isDefault); if (def?.content) history.push({ role: 'system', content: def.content }) }
   const source = typeof untilIdx === 'number' ? allMsgs.value.slice(0, untilIdx + 1) : allMsgs.value
-  history.push(...source.filter((m: any) => m.role && m.content && !m.streaming && !m.toolCall).map((m: any) => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.content })))
+  const imageUrls = await uploadAttachments()
+  for (const m of source) {
+    if (!m.role || !m.content || m.streaming || m.toolCall) continue
+    const role = m.role === 'ai' ? 'assistant' : 'user'
+    if (m.images && m.images.length > 0) {
+      const parts: any[] = [{ type: 'text', text: m.content }]
+      for (const img of m.images) {
+        parts.push({ type: 'image_url', image_url: { url: img, detail: 'auto' } })
+      }
+      history.push({ role, content: parts })
+    } else {
+      history.push({ role, content: m.content })
+    }
+  }
+  const lastUserIdx = history.map((h, i) => h.role === 'user' ? i : -1).filter(i => i >= 0).pop()
+  if (lastUserIdx !== undefined && imageUrls.length > 0) {
+    const text = typeof history[lastUserIdx].content === 'string' ? history[lastUserIdx].content : ''
+    const parts: any[] = [{ type: 'text', text }]
+    for (const url of imageUrls) {
+      parts.push({ type: 'image_url', image_url: { url, detail: 'auto' } })
+    }
+    history[lastUserIdx] = { role: 'user', content: parts }
+  }
   return {
     settings,
     requestBody: {
@@ -895,6 +1027,14 @@ async function retryMsg(m: Message) {
   }
 }
 
+async function speakMsg(m: Message) {
+  if (!('speechSynthesis' in window)) return
+  window.speechSynthesis.cancel()
+  const utter = new SpeechSynthesisUtterance(m.content.replace(/[#*`\[\]\(\)]/g, '').replace(/\!\[.*?\]\(.*?\)/g, '').replace(/\[.*?\]\(.*?\)/g, '$1'))
+  utter.lang = 'zh-CN'
+  utter.rate = 1.1
+  window.speechSynthesis.speak(utter)
+}
 async function copyMsg(m: Message, e: Event) { const btn = (e.target as HTMLElement).closest('button'); if (!btn) return; copyToClipboard(m.content, btn) }
 function cancelEdit() { editingMsg.value = null; input.value = ''; autoSize(); inputRef.value?.blur() }
 function editMsg(m: Message) { editingMsg.value = m; input.value = m.content; autoSize(); nextTick(() => inputRef.value?.focus()) }
@@ -933,13 +1073,41 @@ function fmtDur(ms: number): string {
   return `${sec}s`
 }
 async function copyToClipboard(text: string, btn: HTMLElement) { try { await navigator.clipboard.writeText(text); btn.textContent = '✅'; window.setTimeout(() => { btn.textContent = '📋' }, 900); return } catch { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.left = '-9999px'; ta.style.top = '-9999px'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); btn.textContent = '✅'; window.setTimeout(() => { btn.textContent = '📋' }, 900) } }
-onMounted(() => msgBox.value?.addEventListener('click', onMsgClick))
-onUnmounted(() => msgBox.value?.removeEventListener('click', onMsgClick))
+function goPage(path: string) {
+  window.location.hash = '#' + path
+}
+
+function applyPrefill() {
+  try {
+    const prefill = localStorage.getItem('hhs:prefill')
+    if (prefill) {
+      input.value = prefill
+      localStorage.removeItem('hhs:prefill')
+      nextTick(() => { autoSize(); inputRef.value?.focus() })
+    }
+  } catch { /* ignore */ }
+}
+
+function onNewChatEvent() {
+  nextTick(() => inputRef.value?.focus())
+}
+
+onMounted(() => {
+  msgBox.value?.addEventListener('click', onMsgClick)
+  applyPrefill()
+  window.addEventListener('hhs:new-chat', onNewChatEvent)
+})
+onUnmounted(() => {
+  msgBox.value?.removeEventListener('click', onMsgClick)
+  window.removeEventListener('hhs:new-chat', onNewChatEvent)
+})
 </script>
 
 <style scoped>
 .chat-page{height:100%;display:flex;flex-direction:column;background:var(--bg);overflow:hidden}.chat-msgs{flex:1;display:flex;flex-direction:column;gap:14px;padding:16px;overflow-y:auto}.chat-empty{margin:auto;display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--text2);text-align:center}.chat-empty__icon{font-size:48px}.chat-empty__title{font-size:18px;font-weight:600;color:var(--text)}.chat-empty__hint{font-size:13px;color:var(--text2)}.chat-chips{display:flex;flex-direction:column;gap:6px;width:100%;max-width:280px;margin-top:8px}.chat-chip{padding:10px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border-light);color:var(--text);cursor:pointer;font-size:13px;text-align:left;transition:all .15s}.chat-chip:active,.chat-chip:hover{border-color:var(--primary);background:var(--surface-alt)}.chat-load-more{padding:10px 16px;text-align:center;color:var(--primary);font-size:13px;cursor:pointer;border-radius:8px;background:var(--surface);border:1px dashed var(--border-light);transition:all .15s;user-select:none}.chat-load-more:hover{background:var(--surface-alt);border-color:var(--primary)}
 .chat-input-wrap{padding:8px 8px max(8px,env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--border-light);flex-shrink:0}.chat-files{display:flex;gap:6px;flex-wrap:wrap;padding-bottom:6px}.chat-file{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;background:var(--surface);font-size:12px}.chat-file__rm{background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:14px}.chat-input-area{display:flex;flex-direction:column}.chat-edit-bar{display:flex;align-items:center;gap:8px;padding:0 4px 6px;font-size:12px}.chat-edit-hint{color:var(--warn);font-weight:500}.chat-edit-cancel{background:transparent;border:none;color:var(--text3);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;font-family:inherit}.chat-edit-cancel:hover{color:var(--text)}.chat-input-row{display:flex;gap:8px;align-items:flex-end}.chat-input{flex:1;padding:12px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border-light);color:var(--text);font-size:14px;font-family:inherit;resize:none;outline:none;overflow:hidden;min-height:44px;max-height:120px;line-height:1.4;transition:border .2s}.chat-input:focus{border-color:var(--primary)}
+.chat-voice{width:36px;height:44px;border-radius:20px;border:1px solid var(--border-light);background:var(--surface);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:all .15s}.chat-voice:hover{border-color:var(--primary);background:var(--surface-alt)}.chat-voice.recording{animation:pulseRed 1s ease-in-out infinite;border-color:var(--error);background:color-mix(in srgb,var(--error) 15%,transparent)}@keyframes pulseRed{0%,100%{opacity:1}50%{opacity:.6}}
+.chat-file-btn{width:36px;height:44px;border-radius:20px;border:1px solid var(--border-light);background:var(--surface);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:all .15s}.chat-file-btn:hover{border-color:var(--primary);background:var(--surface-alt)}
 .msg{display:flex;gap:8px;max-width:90%;animation:msgIn .2s ease}@keyframes msgIn{from{opacity:0;transform:translateY(6px)}}.msg--user{align-self:flex-end;flex-direction:row-reverse}.msg--ai{align-self:flex-start}.msg__avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;background:var(--surface-alt)}.msg__body{display:flex;flex-direction:column;gap:4px;max-width:100%;min-width:0}.msg__bubble{padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.6;word-break:break-word;max-width:100%;overflow:hidden}.msg--user .msg__bubble{background:var(--primary);color:#fff;border-bottom-right-radius:4px}.msg--ai .msg__bubble{background:var(--surface);border:1px solid var(--border-light);border-bottom-left-radius:4px}.msg__text{max-width:100%;overflow-wrap:anywhere;transition:opacity .08s ease}
 /* 流式渲染：纯文本阶段（token 批量缓冲期间不跑 markdown，省内存/CPU） */
 .msg__text--stream,.msg__text--parts{display:block}
@@ -1058,4 +1226,171 @@ onUnmounted(() => msgBox.value?.removeEventListener('click', onMsgClick))
 
 .trace-search-results{display:grid;gap:7px}.trace-search-card{display:grid;gap:4px;padding:9px 10px;border:1px solid var(--border-light);border-radius:8px;background:color-mix(in srgb,var(--surface) 96%,var(--primary) 4%);color:var(--text);text-decoration:none}.trace-search-card:hover{border-color:var(--primary);background:color-mix(in srgb,var(--surface) 90%,var(--primary) 10%)}.trace-search-card strong{font-size:12px;line-height:1.4}.trace-search-card span{font-size:11px;line-height:1.45;color:var(--text-secondary)}.trace-search-card small{font-size:10px;color:var(--primary)}
 
+</style>
+
+<style scoped>
+/* ===== 欢迎页 ===== */
+.chat-empty { width: 100%; padding: 24px; }
+.welcome {
+  max-width: 620px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  animation: welcome-in 420ms cubic-bezier(.32,.72,0,1) both;
+}
+@keyframes welcome-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.welcome-badge {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: var(--primary);
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary) 34%, transparent);
+  background: var(--primary-soft);
+}
+.welcome-title {
+  margin-top: 16px;
+  font-size: clamp(22px, 4.2vw, 31px);
+  font-weight: 730;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+  background: var(--grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.welcome-sub {
+  margin-top: 9px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text2);
+  max-width: 46ch;
+}
+.welcome-caps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  width: 100%;
+  max-width: 460px;
+  margin-top: 22px;
+}
+.cap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: left;
+  transition: border-color .18s, transform .18s, box-shadow .18s;
+}
+.cap:hover {
+  border-color: color-mix(in srgb, var(--primary) 42%, transparent);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0,0,0,.22);
+}
+.cap-icon { font-size: 17px; flex-shrink: 0; }
+.cap-text { display: flex; flex-direction: column; min-width: 0; }
+.cap-text b { font-size: 12.5px; font-weight: 640; color: var(--text); }
+.cap-text em { font-style: normal; font-size: 10.5px; color: var(--text3); margin-top: 1px; }
+
+.chat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  max-width: 520px;
+  margin-top: 18px;
+}
+.chat-chip {
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  color: var(--text2);
+  font-size: 12px;
+  transition: all .16s;
+}
+.chat-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.welcome-tip {
+  margin-top: 20px;
+  font-size: 10.5px;
+  color: var(--text3);
+}
+.welcome-tip kbd {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-alt);
+  color: var(--text2);
+}
+
+@media (max-width: 560px) {
+  .welcome-caps { grid-template-columns: 1fr; }
+  .chat-empty { padding: 16px; }
+}
+
+/* ===== 防横向溢出 ===== */
+.chat-page,
+.chat-msgs,
+.msg,
+.msg__body,
+.msg__bubble,
+.msg__text,
+.msg__text-part,
+.trace-box,
+.trace-body {
+  max-width: 100%;
+}
+.msg__bubble { width: fit-content; max-width: 100%; }
+.msg__text,
+.msg__text-part,
+.trace-reason,
+.msg__bubble {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
+}
+.msg__body { min-width: 0; }
+.chat-msgs { overflow-x: hidden; }
+
+/* ===== 阅读宽度与留白优化 ===== */
+.chat-msgs {
+  padding: 20px clamp(14px, 3.6vw, 44px) 8px;
+  gap: 16px;
+}
+.chat-msgs > .msg,
+.chat-msgs > .tool-card {
+  width: 100%;
+  max-width: 880px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.chat-msgs > .chat-load-more { max-width: 880px; margin: 0 auto; width: 100%; }
+
+.chat-input-wrap {
+  padding: 6px clamp(12px, 3.6vw, 44px) 10px;
+}
+.chat-input-area,
+.chat-files,
+.chat-hints {
+  max-width: 880px;
+  margin-left: auto;
+  margin-right: auto;
+}
 </style>

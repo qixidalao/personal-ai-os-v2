@@ -1,77 +1,347 @@
 <template>
-  <main class="cap-page">
-    <header class="cap-hero">
-      <div><div class="eyebrow">PERSONAL AI OS · EXTENSIONS</div><h1>能力中心</h1><p>组合 Agent Skills 与本地工具，让 AI 在需要时使用合适的能力。</p></div>
-      <button class="refresh" :disabled="loading || saving" @click="loadAll">{{ loading ? '读取中…' : '↻ 刷新' }}</button>
-    </header>
-    <div v-if="error" class="notice error">{{ error }}</div>
-    <div v-if="message" class="notice success">{{ message }}</div>
-    <section class="cap-grid">
-      <article class="panel">
-        <div class="panel-head"><div><span class="panel-icon">🧭</span><h2>Agent Skills</h2><p>按需读取的 Markdown 指南，不会执行技能文件代码。</p></div><span class="count">{{ enabledSkillCount }}/{{ skills.length }} 启用</span></div>
-        <div v-if="skills.length" class="items">
-          <label v-for="skill in skills" :key="skill.id" class="item">
-            <div class="item-copy"><div class="item-title">{{ skill.name }} <span class="tag">{{ categoryLabel(skill.category) }}</span></div><p>{{ skill.description }}</p><code>{{ skill.id }}</code></div>
-            <input v-model="skill.enabled" type="checkbox" :aria-label="`启用${skill.name}`" />
-          </label>
+  <div class="ui-page">
+    <div class="ui-page-inner">
+      <header class="ui-head">
+        <div>
+          <div class="ui-eyebrow">Skills</div>
+          <h1 class="ui-title">技能中心</h1>
+          <p class="ui-sub">
+            Agent Skills 是一份按需读取的 Markdown 工作指南。助手只在相关任务里读它，
+            不会执行其中的代码，所以可以放心把方法论沉淀进来。
+          </p>
         </div>
-        <div v-else class="empty">还没有可用技能。</div>
-      </article>
-      <article class="panel">
-        <div class="panel-head"><div><span class="panel-icon">🔌</span><h2>本地工具</h2><p>这些已注册工具会作为函数提供给 Agent；关闭后模型不会收到它的定义。</p></div><span class="count">{{ enabledToolCount }}/{{ tools.length }} 启用</span></div>
-        <div v-if="tools.length" class="items">
-          <label v-for="tool in tools" :key="tool.name" class="item">
-            <div class="item-copy"><div class="item-title">{{ tool.name }} <span class="tag">{{ categoryLabel(tool.category) }}</span></div><p>{{ tool.description || '没有描述' }}</p><code v-if="!tool.registered">尚未加载到注册表</code></div>
-            <input v-model="tool.enabled" type="checkbox" :aria-label="`启用${tool.name}`" :disabled="!tool.registered" />
-          </label>
+        <div class="ui-head-actions">
+          <button class="ui-btn" @click="load" :disabled="loading">
+            <RefreshCw :size="14" :class="{ spin: loading }" /> 刷新
+          </button>
+          <button class="ui-btn ui-btn--primary" @click="router.push('/agent')">
+            <Bot :size="14" /> 到智能体配置
+          </button>
         </div>
-        <div v-else class="empty">读取工具列表失败或没有已注册工具。</div>
-      </article>
-    </section>
-    <footer class="cap-footer"><span>社区插件会在服务器上运行代码；此页只管理仓库内工具与只读技能，未启用未经审查的远程代码安装。</span><button class="save" :disabled="loading || saving" @click="saveAll">{{ saving ? '保存中…' : '保存能力配置' }}</button></footer>
-  </main>
+      </header>
+
+      <div class="stat-row">
+        <div class="stat">
+          <div class="stat-icon" style="color: var(--primary); background: var(--primary-soft)"><Puzzle :size="15" /></div>
+          <div><div class="stat-value">{{ skills.length }}</div><div class="stat-label">已安装技能</div></div>
+        </div>
+        <div class="stat">
+          <div class="stat-icon" style="color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent)"><Power :size="15" /></div>
+          <div><div class="stat-value">{{ enabledCount }}</div><div class="stat-label">已启用</div></div>
+        </div>
+        <div class="stat">
+          <div class="stat-icon" style="color: var(--info); background: color-mix(in srgb, var(--info) 14%, transparent)"><Layers :size="15" /></div>
+          <div><div class="stat-value">{{ categories.length }}</div><div class="stat-label">分类</div></div>
+        </div>
+      </div>
+
+      <div class="filters">
+        <button :class="['ui-chip', { active: cat === '' }]" @click="cat = ''">全部</button>
+        <button
+          v-for="c in categories"
+          :key="c"
+          :class="['ui-chip', { active: cat === c }]"
+          @click="cat = c"
+        >{{ c }}</button>
+      </div>
+
+      <div v-if="loading" class="skill-grid">
+        <div v-for="i in 3" :key="i" class="ui-skeleton" style="height: 150px"></div>
+      </div>
+
+      <div v-else-if="!filtered.length" class="ui-empty">
+        <div class="ui-empty-icon">🧩</div>
+        <div class="ui-empty-title">这里还没有技能</div>
+        <div class="ui-empty-desc">按下面的三步添加一个 SKILL.md，刷新后就会出现在这里。</div>
+      </div>
+
+      <div v-else class="skill-grid">
+        <article v-for="s in filtered" :key="s.id" :class="['skcard', { off: !s.enabled }]">
+          <div class="skcard-hd">
+            <div class="skcard-title">
+              <span class="skcard-glyph">{{ glyphOf(s.category) }}</span>
+              <div>
+                <div class="skcard-name">{{ s.name }}</div>
+                <code class="skcard-id">{{ s.id }}</code>
+              </div>
+            </div>
+            <button
+              :class="['ui-switch', { on: s.enabled }]"
+              :disabled="saving === s.id"
+              @click="toggle(s)"
+            ></button>
+          </div>
+
+          <p class="skcard-desc">{{ s.description || '（无描述）' }}</p>
+
+          <div class="skcard-ft">
+            <span class="ui-badge">{{ s.category }}</span>
+            <button class="link-btn" @click="readGuide(s)">
+              <BookOpen :size="12" /> 读取指南
+            </button>
+          </div>
+        </article>
+      </div>
+
+      <section class="ui-card" style="margin-top: 20px">
+        <div class="ui-card-hd">
+          <div>
+            <div class="ui-card-title"><PlusCircle :size="15" /> 新增一个技能</div>
+            <div class="ui-card-desc">后端启动时会扫描 skills/*/SKILL.md，无需重启即可热加载。</div>
+          </div>
+        </div>
+        <ol class="steps">
+          <li><b>建目录</b><code>skills/my-skill/</code></li>
+          <li><b>写指南</b><code>SKILL.md</code>，顶部用 YAML frontmatter 写 name / description / category</li>
+          <li><b>刷新本页</b>并打开开关，助手就能在相关任务里读到它</li>
+        </ol>
+        <pre class="sample">---
+name: 我的技能
+description: 一句话说明什么时候该用它
+category: general
+---
+
+这里写具体的工作方法、检查清单、示例。</pre>
+      </section>
+    </div>
+
+    <!-- 指南预览 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="guide" class="modal-mask" @click.self="guide = null">
+          <div class="modal">
+            <div class="modal-hd">
+              <div>
+                <div class="modal-title">{{ guide.name }}</div>
+                <code class="modal-id">{{ guide.id }}</code>
+              </div>
+              <button class="ui-btn ui-btn--ghost ui-btn--icon" @click="guide = null"><X :size="15" /></button>
+            </div>
+            <div class="modal-bd">
+              <div v-if="guideLoading" class="ui-skeleton" style="height: 120px"></div>
+              <pre v-else class="guide-text">{{ guideText }}</pre>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-interface Skill { id: string; name: string; description: string; category: string; enabled: boolean }
-interface Tool { name: string; description: string; category: string; schema: any; enabled: boolean; registered: boolean; showSchema?: boolean }
-const skills = ref<Skill[]>([])
-const tools = ref<Tool[]>([])
-const loading = ref(false)
-const saving = ref(false)
-const error = ref('')
-const message = ref('')
-const enabledSkillCount = computed(() => skills.value.filter(x => x.enabled).length)
-const enabledToolCount = computed(() => tools.value.filter(x => x.enabled).length)
-const categoryLabels: Record<string, string> = { research: '研究', discovery: '兴趣发现', frontend: '前端', filesystem: '文件', search: '搜索', shell: 'Shell', browser: '浏览器', python: 'Python', media: '媒体', skills: '技能' }
-function categoryLabel(value: string) { return categoryLabels[value] || value || '通用' }
-async function loadAll() {
-  loading.value = true; error.value = ''; message.value = ''
-  try {
-    const [skillResponse, toolResponse] = await Promise.all([fetch('/api/v1/skills'), fetch('/api/v1/tools')])
-    if (!skillResponse.ok || !toolResponse.ok) throw new Error('能力目录读取失败')
-    const [skillData, toolData] = await Promise.all([skillResponse.json(), toolResponse.json()])
-    skills.value = skillData.skills || []; tools.value = toolData.tools || []
-  } catch (e: any) { error.value = e?.message || '读取失败' }
-  finally { loading.value = false }
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import {
+  RefreshCw, Puzzle, Power, Layers, BookOpen, PlusCircle, X, Bot,
+} from 'lucide-vue-next'
+
+const router = useRouter()
+const skills = ref<any[]>([])
+const loading = ref(true)
+const cat = ref('')
+const saving = ref('')
+const guide = ref<any>(null)
+const guideText = ref('')
+const guideLoading = ref(false)
+
+const categories = computed(() => {
+  const set = new Set<string>()
+  for (const s of skills.value) if (s.category) set.add(s.category)
+  return [...set].sort()
+})
+const enabledCount = computed(() => skills.value.filter((s) => s.enabled).length)
+const filtered = computed(() => (cat.value ? skills.value.filter((s) => s.category === cat.value) : skills.value))
+
+function glyphOf(category?: string) {
+  const map: Record<string, string> = {
+    research: '🔎', discovery: '📡', frontend: '🎨', writing: '✍️',
+    coding: '💻', data: '📊', general: '🧩',
+  }
+  return map[category || 'general'] || '🧩'
 }
-async function saveAll() {
-  saving.value = true; error.value = ''; message.value = ''
+
+async function load() {
+  loading.value = true
   try {
-    const response = await fetch('/api/v1/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      enabledSkills: skills.value.filter(s => s.enabled).map(s => s.id),
-      agentTools: tools.value.map(t => ({ name: t.name, description: t.description, schema: JSON.stringify(t.schema || {}), enabled: !!t.enabled, showSchema: !!t.showSchema })),
-    }) })
-    if (!response.ok) throw new Error(`保存失败 HTTP ${response.status}`)
-    await loadAll()
-    message.value = '能力配置已保存；新配置会用于下一条对话。'
-  } catch (e: any) { error.value = e?.message || '保存失败' }
-  finally { saving.value = false }
+    const r = await fetch('/api/v1/skills')
+    const data = await r.json()
+    skills.value = data.skills || []
+  } catch {
+    skills.value = []
+  } finally {
+    loading.value = false
+  }
 }
-onMounted(loadAll)
+
+async function toggle(s: any) {
+  saving.value = s.id
+  const next = skills.value.map((x) => (x.id === s.id ? { ...x, enabled: !x.enabled } : x))
+  try {
+    const r = await fetch('/api/v1/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabledSkills: next.filter((x) => x.enabled).map((x) => x.id) }),
+    })
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    skills.value = next
+  } catch (e: any) {
+    alert(`保存失败：${e?.message || e}`)
+  } finally {
+    saving.value = ''
+  }
+}
+
+async function readGuide(s: any) {
+  guide.value = s
+  guideText.value = ''
+  guideLoading.value = true
+  try {
+    const r = await fetch('/api/v1/tools/call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'read_skill', arguments: { skill_id: s.id } }),
+    })
+    const data = await r.json()
+    const result = data?.result
+    guideText.value =
+      typeof result === 'string'
+        ? result
+        : result?.content || JSON.stringify(result ?? data, null, 2)
+  } catch (e: any) {
+    guideText.value = `读取失败：${e?.message || e}`
+  } finally {
+    guideLoading.value = false
+  }
+}
+
+onMounted(load)
 </script>
 
 <style scoped>
-.cap-page{height:100%;overflow:auto;padding:clamp(18px,4vw,42px);color:var(--text);box-sizing:border-box}.cap-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;max-width:1180px;margin:0 auto 22px}.eyebrow{font-size:10px;letter-spacing:.16em;color:var(--primary);font-weight:800}.cap-hero h1{margin:7px 0;font-size:clamp(24px,4vw,34px)}.cap-hero p,.panel-head p{margin:0;color:var(--text-secondary);font-size:13px;line-height:1.6}.refresh,.save{border:1px solid var(--border-light);border-radius:10px;padding:9px 13px;background:var(--surface);color:var(--text);cursor:pointer}.cap-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;max-width:1180px;margin:auto}.panel{min-width:0;border:1px solid var(--border-light);background:color-mix(in srgb,var(--surface) 94%,var(--primary) 6%);border-radius:16px;overflow:hidden}.panel-head{display:flex;justify-content:space-between;gap:12px;padding:18px;border-bottom:1px solid var(--border-light)}.panel-icon{font-size:20px}.panel-head h2{display:inline;margin:0 0 0 8px;font-size:17px}.count,.tag{font-size:11px;color:var(--text-secondary);white-space:nowrap}.items{display:flex;flex-direction:column}.item{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 18px;border-bottom:1px solid var(--border-light);cursor:pointer}.item:last-child{border-bottom:0}.item:hover{background:rgba(127,127,127,.06)}.item-copy{min-width:0}.item-title{font-size:13px;font-weight:700}.tag{margin-left:7px;padding:3px 7px;border:1px solid var(--border-light);border-radius:999px}.item p{margin:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.5}.item code{font-size:10px;color:var(--text3)}input[type=checkbox]{width:18px;height:18px;accent-color:var(--primary);flex:none}.empty{padding:24px;color:var(--text-secondary);font-size:13px}.cap-footer{max-width:1180px;margin:16px auto 0;display:flex;justify-content:space-between;align-items:center;gap:16px;color:var(--text-secondary);font-size:11px;line-height:1.5}.save{background:var(--primary);color:white;border-color:transparent;font-weight:700;white-space:nowrap}.save:disabled,.refresh:disabled{opacity:.6;cursor:wait}.notice{max-width:1180px;margin:0 auto 12px;padding:10px 13px;border-radius:9px;font-size:12px}.notice.error{color:var(--error);background:color-mix(in srgb,var(--error) 12%,transparent)}.notice.success{color:var(--success);background:color-mix(in srgb,var(--success) 12%,transparent)}@media(max-width:820px){.cap-grid{grid-template-columns:1fr}.cap-footer{align-items:flex-start;flex-direction:column}.save{width:100%}}
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.stat {
+  display: flex; align-items: center; gap: 11px;
+  padding: 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.stat-icon { width: 34px; height: 34px; border-radius: var(--r-sm); display: grid; place-items: center; flex-shrink: 0; }
+.stat-value { font-size: 19px; font-weight: 720; letter-spacing: -0.02em; line-height: 1.2; }
+.stat-label { font-size: 11px; color: var(--text3); }
+
+.filters { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 16px; }
+
+.skill-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.skcard {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  transition: border-color var(--t-mid), box-shadow var(--t-mid), opacity var(--t-mid), transform var(--t-mid);
+}
+.skcard:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.skcard.off { opacity: 0.55; }
+
+.skcard-hd { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.skcard-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.skcard-glyph {
+  width: 34px; height: 34px;
+  border-radius: var(--r-sm);
+  background: var(--surface-alt);
+  display: grid; place-items: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.skcard-name { font-size: 13px; font-weight: 650; letter-spacing: -0.01em; }
+.skcard-id {
+  font-size: 10px;
+  color: var(--text3);
+  background: transparent;
+  padding: 0;
+  font-family: var(--font-mono);
+}
+
+.skcard-desc {
+  font-size: 11.5px;
+  color: var(--text2);
+  line-height: 1.65;
+  margin-top: 11px;
+  min-height: 38px;
+}
+
+.skcard-ft {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-light);
+}
+.link-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: none; background: transparent;
+  color: var(--text3);
+  font-size: 11px;
+  font-weight: 560;
+  transition: color var(--t-fast);
+}
+.link-btn:hover { color: var(--primary); }
+
+.steps { margin: 0 0 14px; padding-left: 20px; }
+.steps li { font-size: 12px; color: var(--text2); line-height: 2; }
+.steps code { font-size: 11px; background: var(--surface-alt); padding: 1px 6px; margin-left: 4px; }
+.sample { font-size: 11px; line-height: 1.7; color: var(--text2); background: var(--bg); }
+
+.modal-mask {
+  position: fixed; inset: 0; z-index: 1500;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  background: var(--overlay);
+  backdrop-filter: blur(5px);
+}
+.modal {
+  width: min(94vw, 680px);
+  max-height: 86vh;
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.modal-hd {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--border-light);
+}
+.modal-title { font-size: 14px; font-weight: 680; }
+.modal-id { font-size: 10.5px; color: var(--text3); background: transparent; padding: 0; }
+.modal-bd { padding: 16px 18px; overflow-y: auto; }
+.guide-text {
+  font-size: 11.5px;
+  line-height: 1.8;
+  color: var(--text2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg);
+}
+
+.fade-enter-active, .fade-leave-active { transition: opacity 180ms var(--ease); }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
