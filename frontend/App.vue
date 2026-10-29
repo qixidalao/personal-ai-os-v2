@@ -268,7 +268,6 @@ const pageTitles: Record<string, string> = {
   '/history': '历史记录',
   '/search': '全局搜索',
   '/profile': '角色档案',
-  '/plugins': '技能中心',
   '/settings': '设置',
 }
 const pageTitle = computed(() => pageTitles[route.path] || 'Personal AI OS')
