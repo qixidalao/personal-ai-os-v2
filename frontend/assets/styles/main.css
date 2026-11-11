@@ -397,3 +397,39 @@ pre {
 /* 滑块统一使用主题主色 */
 input[type="range"] { accent-color: var(--primary); }
 input[type="checkbox"] { accent-color: var(--primary); }
+
+/* AIOS-MOBILE */
+/* 中文：AIOS-MOBILE */
+@media (max-width: 767px) {
+  /* 全局兜底：所有带 ui-* 原语的子页面统一收敛留白 / 字号 / 触摸目标 */
+  /* 底部留白保持 56px：app-main 已有 58px tab 栏留白（task-2 负责），
+     两条留白互不叠加也不会被 tab 栏盖住 */
+  .ui-page { padding: 18px 14px 56px; }
+  .ui-page-inner { max-width: 100%; }
+
+  .ui-head { gap: 12px; margin-bottom: 18px; }
+  .ui-head-actions { gap: 8px; }
+  .ui-title { font-size: 22px; }
+  .ui-sub { font-size: 12.5px; max-width: none; }
+
+  .ui-card { padding: 16px; border-radius: var(--r-md); }
+  .ui-card-hd { gap: 10px; margin-bottom: 12px; }
+
+  /* 网格一律去掉 minmax() 最小宽度，杜绝子页在 390/360 下的横向溢出 */
+  .ui-grid--2, .ui-grid--3 { grid-template-columns: minmax(0, 1fr); }
+  .ui-grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  /* 触摸目标 ≥ 40px */
+  .ui-btn { height: 40px; padding: 0 14px; font-size: 13px; }
+  .ui-btn--sm { height: 34px; padding: 0 12px; }
+  .ui-btn--icon { width: 40px; }
+  .ui-chip { height: 32px; padding: 0 12px; }
+
+  .ui-input, .ui-select, .ui-textarea { font-size: 13.5px; }
+
+  .ui-empty { padding: 40px 12px; }
+  code, pre { word-break: break-word; }
+  pre { font-size: 11.5px; }
+}
+/* /AIOS-MOBILE */
+/* 中文：/AIOS-MOBILE */

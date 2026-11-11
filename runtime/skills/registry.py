@@ -1,4 +1,5 @@
 """Read-only loader for local Markdown Agent Skills."""
+# 中文：用于本地 Markdown Agent Skills 的只读加载器。
 from __future__ import annotations
 
 import re
@@ -8,6 +9,7 @@ from typing import Any
 import yaml
 
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
+                                                   # 中文：技能
 DEFAULT_ENABLED_SKILLS = ["web-research", "interest-scout", "frontend-craft"]
 _MAX_SKILL_BYTES = 32_000
 _SKILL_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")

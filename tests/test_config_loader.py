@@ -182,7 +182,7 @@ class TestConfigLoader:
         """测试导入空内容返回 False"""
         loader = ConfigLoader(sample_yaml_config)
         success = loader.import_config("empty", "   ")
-        # yaml.safe_load("   ") returns None
+        # yaml.safe_load("   ") returns None  ｜ yaml.safe_load(" ") 返回 None
         assert success is False
 
     def test_cache_works(self, sample_yaml_config: Path):

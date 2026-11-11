@@ -1,24 +1,47 @@
 <template>
-  <div class="ui-page">
-    <div class="ui-page-inner">
-      <header class="ui-head">
+  <div class="persona-panel">
+    <!-- 角色列表（面板顶部指标 + 列表 + 新建入口） -->
+    <section class="ui-section persona-section">
+      <div class="ui-section-head">
         <div>
-          <div class="ui-eyebrow">Personas</div>
-          <h1 class="ui-title">角色档案</h1>
-          <p class="ui-sub">为不同场景准备不同的人设。一键写入提示词库后，对话就会按这个人设工作。</p>
+          <div class="ui-section-title">角色列表</div>
+          <div class="ui-section-sub">
+            为不同场景准备不同的人设。一键写入提示词库后，对话就会按这个人设工作。当前使用的角色会带「当前使用」标记。
+          </div>
         </div>
-        <div class="ui-head-actions">
-          <button class="ui-btn ui-btn--primary" @click="create">
+        <div class="ui-section-actions">
+          <span class="ui-chip">共 {{ personas.length }} 个</span>
+          <button class="ui-btn ui-btn--primary ui-btn--sm" @click="create">
             <Plus :size="14" /> 新建角色
           </button>
         </div>
-      </header>
+      </div>
+
+      <!-- 指标 -->
+      <div class="ui-grid ui-grid--3 persona-stats">
+        <div class="ui-stat">
+          <div class="ui-stat-label">角色</div>
+          <div class="ui-stat-value">{{ personas.length }}</div>
+          <div class="ui-stat-hint">已保存的人设</div>
+        </div>
+        <div class="ui-stat">
+          <div class="ui-stat-label">当前使用</div>
+          <div class="ui-stat-value persona-stat-sm">{{ personas.find((p) => p.active)?.name || '—' }}</div>
+          <div class="ui-stat-hint">{{ personas.find((p) => p.active)?.role || '尚未选择' }}</div>
+        </div>
+        <div class="ui-stat">
+          <div class="ui-stat-label">系统提示词</div>
+          <div class="ui-stat-value">{{ personas.filter((p) => p.systemPrompt).length }}</div>
+          <div class="ui-stat-hint">已配置人设内容</div>
+        </div>
+      </div>
 
       <div class="persona-grid">
         <article
           v-for="p in personas"
           :key="p.id"
           :class="['persona', { active: p.active }]"
+          class="ui-card ui-card--hover"
         >
           <div class="persona-top">
             <div class="persona-avatar">{{ p.emoji }}</div>
@@ -30,8 +53,8 @@
               <div class="persona-role">{{ p.role || '通用助手' }}</div>
             </div>
             <div class="persona-menu">
-              <button class="act" title="编辑" @click="edit(p)"><Pencil :size="13" /></button>
-              <button class="act act--danger" title="删除" @click="remove(p)"><Trash2 :size="13" /></button>
+              <button class="ui-btn ui-btn--sm ui-btn--icon ui-btn--ghost" title="编辑" @click="edit(p)"><Pencil :size="13" /></button>
+              <button class="ui-btn ui-btn--sm ui-btn--icon ui-btn--ghost persona-del" title="删除" @click="remove(p)"><Trash2 :size="13" /></button>
             </div>
           </div>
 
@@ -40,13 +63,13 @@
           <pre class="persona-prompt">{{ p.systemPrompt || '（未设置系统提示词）' }}</pre>
 
           <div class="persona-ft">
-            <button class="link-btn" :disabled="p.active" @click="activate(p)">
+            <button class="ui-btn ui-btn--sm ui-btn--ghost" :disabled="p.active" @click="activate(p)">
               <CheckCircle2 :size="12" /> {{ p.active ? '使用中' : '设为当前' }}
             </button>
-            <button class="link-btn" @click="applyToPrompts(p)">
+            <button class="ui-btn ui-btn--sm ui-btn--ghost" @click="applyToPrompts(p)">
               <Upload :size="12" /> 写入提示词库
             </button>
-            <button class="link-btn" @click="chatWith(p)">
+            <button class="ui-btn ui-btn--sm ui-btn--ghost" @click="chatWith(p)">
               <MessageSquare :size="12" /> 用它对话
             </button>
           </div>
@@ -58,22 +81,23 @@
           <div class="new-desc">比如「代码审查」「文案润色」「学习教练」</div>
         </button>
       </div>
+    </section>
 
-      <section class="ui-card" style="margin-top: 20px">
-        <div class="ui-card-hd">
-          <div>
-            <div class="ui-card-title"><Activity :size="15" /> 使用概况</div>
-            <div class="ui-card-desc">来自后端运行时的真实统计。</div>
-          </div>
+    <!-- 使用概况 -->
+    <section class="ui-section persona-section">
+      <div class="ui-section-head">
+        <div>
+          <div class="ui-section-title"><Activity :size="15" /> 使用概况</div>
+          <div class="ui-section-sub">来自后端运行时的真实统计。</div>
         </div>
-        <div class="stats">
-          <div class="st" v-for="s in stats" :key="s.label">
-            <div class="st-value">{{ s.value }}</div>
-            <div class="st-label">{{ s.label }}</div>
-          </div>
+      </div>
+      <div class="ui-grid ui-grid--4">
+        <div class="ui-stat" v-for="s in stats" :key="s.label">
+          <div class="ui-stat-label">{{ s.label }}</div>
+          <div class="ui-stat-value">{{ s.value }}</div>
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
 
     <!-- 编辑弹窗 -->
     <Teleport to="body">
@@ -279,7 +303,8 @@ async function loadStats() {
       { label: '技能数量', value: (sk.skills || []).length },
       { label: '运行版本', value: st.version || '—' },
     ]
-  } catch { /* ignore */ }
+  } catch { /* ignore */
+  /* 中文：忽略 */ }
 }
 
 onMounted(() => {
@@ -289,6 +314,16 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* ============================================================
+   Persona Panel — 从 ProfilePage 提取，嵌入 Agent 页 Tab
+   不再包含页面壳 .ui-page / .ui-page-inner / .ui-hero / 固定视口滚动容器
+   ============================================================ */
+.persona-panel { min-width: 0; }
+.persona-stats { margin-bottom: 16px; }
+.persona-stat-sm { font-size: 17px; letter-spacing: 0; }
+.persona-section:last-of-type { margin-bottom: 0; }
+
+/* ---------------- 角色网格 ---------------- */
 .persona-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
@@ -299,13 +334,10 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   padding: 16px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--r-lg);
-  background: var(--surface);
   text-align: left;
-  transition: border-color var(--t-mid), box-shadow var(--t-mid), transform var(--t-mid);
+  border-radius: var(--r-lg);
 }
-.persona:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.persona:hover { transform: translateY(-1px); }
 .persona.active {
   border-color: color-mix(in srgb, var(--primary) 46%, transparent);
   background:
@@ -315,52 +347,57 @@ onMounted(() => {
 
 .persona-top { display: flex; align-items: center; gap: 11px; }
 .persona-avatar {
-  width: 40px; height: 40px;
+  width: 42px;
+  height: 42px;
   border-radius: var(--r-md);
-  display: grid; place-items: center;
-  font-size: 20px;
+  display: grid;
+  place-items: center;
+  font-size: 21px;
+  line-height: 1;
   background: var(--surface-alt);
   flex-shrink: 0;
 }
 .persona.active .persona-avatar { background: var(--primary-soft); }
 .persona-id { flex: 1; min-width: 0; }
 .persona-name {
-  display: flex; align-items: center; gap: 7px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-size: 13.5px;
   font-weight: 660;
   letter-spacing: -0.01em;
+  flex-wrap: wrap;
 }
-.persona-role { font-size: 11px; color: var(--text3); margin-top: 1px; }
-.persona-menu { display: flex; gap: 2px; }
-
-.act {
-  width: 26px; height: 26px;
-  display: grid; place-items: center;
-  border: none; border-radius: 6px;
-  background: transparent;
+.persona-role {
+  font-size: 11px;
   color: var(--text3);
-  transition: all var(--t-fast);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.act:hover { background: var(--surface-alt); color: var(--text); }
-.act--danger:hover { background: color-mix(in srgb, var(--error) 14%, transparent); color: var(--error); }
+.persona-menu { display: flex; gap: 2px; flex-shrink: 0; }
+.persona-menu .ui-btn { width: 28px; height: 28px; }
+.persona-del:hover { color: var(--error); background: color-mix(in srgb, var(--error) 12%, transparent); }
 
 .persona-desc {
+  margin: 10px 0 0;
   font-size: 11.5px;
   color: var(--text2);
-  line-height: 1.6;
-  margin-top: 10px;
+  line-height: 1.62;
 }
 
 .persona-prompt {
-  margin-top: 10px;
+  margin: 10px 0 0;
+  font-family: var(--font-mono);
   font-size: 10.5px;
-  line-height: 1.65;
+  line-height: 1.7;
   color: var(--text3);
   background: var(--bg);
   border: 1px solid var(--border-light);
   border-radius: var(--r-sm);
   padding: 10px;
-  max-height: 84px;
+  max-height: 86px;
   overflow: hidden;
   white-space: pre-wrap;
   display: -webkit-box;
@@ -372,57 +409,53 @@ onMounted(() => {
 .persona-ft {
   display: flex;
   align-items: center;
-  gap: 13px;
+  gap: 4px;
   flex-wrap: wrap;
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--border-light);
 }
-.link-btn {
-  display: inline-flex; align-items: center; gap: 4px;
-  border: none; background: transparent;
-  color: var(--text3);
-  font-size: 11px;
-  font-weight: 560;
-  transition: color var(--t-fast);
-}
-.link-btn:hover:not(:disabled) { color: var(--primary); }
-.link-btn:disabled { opacity: 0.5; cursor: default; }
+.persona-ft .ui-btn { color: var(--text2); }
+.persona-ft .ui-btn:hover:not(:disabled) { color: var(--text); }
 
 .persona--new {
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  border-style: dashed;
-  min-height: 180px;
+  gap: 5px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-lg);
+  background: transparent;
+  min-height: 190px;
   color: var(--text3);
   cursor: pointer;
+  transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast), transform var(--t-fast);
 }
-.persona--new:hover { border-color: var(--primary); color: var(--primary); }
+.persona--new:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-soft);
+  transform: translateY(-1px);
+}
 .new-icon {
-  width: 40px; height: 40px;
+  width: 42px;
+  height: 42px;
   border-radius: var(--r-md);
-  display: grid; place-items: center;
+  display: grid;
+  place-items: center;
   background: var(--surface-alt);
   margin-bottom: 4px;
 }
 .new-title { font-size: 12.5px; font-weight: 640; }
-.new-desc { font-size: 11px; }
+.new-desc { font-size: 11px; max-width: 26ch; text-align: center; line-height: 1.5; }
 
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
-.st {
-  padding: 14px;
-  border-radius: var(--r-md);
-  background: var(--surface-2);
-  border: 1px solid var(--border-light);
-}
-.st-value { font-size: 20px; font-weight: 720; letter-spacing: -0.02em; }
-.st-label { font-size: 10.5px; color: var(--text3); margin-top: 2px; }
-
-/* 弹窗 */
+/* ---------------- 弹窗 ---------------- */
 .modal-mask {
-  position: fixed; inset: 0; z-index: 1500;
-  display: flex; align-items: center; justify-content: center;
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 20px;
   background: var(--overlay);
   backdrop-filter: blur(5px);
@@ -430,7 +463,8 @@ onMounted(() => {
 .modal {
   width: min(94vw, 600px);
   max-height: 88vh;
-  display: flex; flex-direction: column;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-lg);
@@ -438,17 +472,47 @@ onMounted(() => {
   overflow: hidden;
 }
 .modal-hd {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 15px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--border-light);
+  background: var(--grad-surface);
 }
-.modal-title { font-size: 14px; font-weight: 680; }
+.modal-title { font-size: 14px; font-weight: 680; letter-spacing: -0.01em; }
 .modal-bd { padding: 18px; overflow-y: auto; }
 .row { display: flex; gap: 12px; }
 .emoji-inp { text-align: center; font-size: 18px; }
 .mono { font-family: var(--font-mono); font-size: 12px; }
-.modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light);
+}
 
 .fade-enter-active, .fade-leave-active { transition: opacity 180ms var(--ease); }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* AIOS-MOBILE */
+/* 中文：AIOS-MOBILE */
+@media (max-width: 767px) {
+  .persona-stats { margin-bottom: 12px; }
+  .persona-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .persona { padding: 14px; }
+  .persona-menu .ui-btn { width: 34px; height: 34px; }
+  .persona-ft .ui-btn { height: 34px; }
+  .persona--new { min-height: 140px; }
+  .row { flex-direction: column; gap: 0; }
+  .row .ui-field { flex: 1 1 auto !important; }
+  .emoji-inp { width: 100%; }
+  .modal-mask { padding: 12px; }
+  .modal { width: 100%; max-height: 88vh; }
+  .modal-hd { padding: 12px 14px; }
+  .modal-bd { padding: 14px; }
+}
+/* /AIOS-MOBILE */
+/* 中文：/AIOS-MOBILE */
 </style>

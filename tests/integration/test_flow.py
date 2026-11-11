@@ -47,4 +47,6 @@ class TestCoreFlow:
         assert len(tools) > 0
 
         filesystem_tools = ToolRegistry.list("filesystem")
+                                             # 中文：filesystem
+
         assert len(filesystem_tools) > 0

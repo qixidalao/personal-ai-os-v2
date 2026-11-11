@@ -1,22 +1,28 @@
-"""
-Shell 工具
-"""
-import subprocess
+"""Shell tool executed inside the AIOS execution boundary (P0)."""
+# 中文：在 AIOS 执行边界内运行的 Shell 工具（P0）。
 from tools import ToolRegistry
 
+from runtime.execution import get_execution_manager
 
-@ToolRegistry.register("shell_exec", "执行 Shell 命令", "shell")
+PERMISSIONS = ["exec"]
+
+
+@ToolRegistry.register(
+    "shell_exec",
+    "在受控沙箱内执行 Shell 命令：只允许读写工作区、默认禁网、有超时与输出上限。",
+    "shell",
+    # 中文：shell
+    permissions=PERMISSIONS,
+)
 def shell_exec(command: str, timeout: int = 30) -> dict:
-    result = subprocess.run(
-        command,
-        shell=True,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
+    result = get_execution_manager().execute_shell(command, timeout=timeout)
     return {
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-        "return_code": result.returncode,
-        "success": result.returncode == 0,
+        "stdout": result.get("stdout", ""),
+        "stderr": result.get("stderr", ""),
+        "return_code": result.get("exit_code"),
+        "success": result.get("status") == "succeeded",
+        "truncated": result.get("truncated", False),
+        "duration_ms": result.get("duration_ms"),
+        "sandbox": result.get("sandbox"),
+        "error": result.get("error"),
     }

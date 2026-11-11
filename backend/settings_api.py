@@ -10,7 +10,7 @@ from urllib.parse import urljoin
 import json
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 # 导入 ToolRegistry 并触发所有工具模块注册，实现自动扫描
@@ -27,6 +27,7 @@ router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 STORAGE_DIR = Path("storage")
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 SETTINGS_FILE = STORAGE_DIR / "settings.json"
+USER_SETTINGS_DIR = STORAGE_DIR / "users"
 
 
 class ProviderModelsRequest(BaseModel):
@@ -54,6 +55,8 @@ def _default_settings() -> dict:
         "ligatures": True,
         "glass": False,
         "devMode": False,
+        "autoTools": True,
+        "thinking": False,
         "displayLimit": 30,  # 聊天消息默认显示条数，0 表示无限制
     }
 
@@ -159,28 +162,120 @@ def _extract_model_ids(payload) -> list[str]:
     return model_ids
 
 
+def _is_owner_request(request: Request) -> bool:
+    try:
+        from backend.auth import _bearer_ok, is_local_access, session_from_scope
+
+        if is_local_access(request.scope) or _bearer_ok(request.scope):
+            return True
+        session = session_from_scope(request.scope)
+        return bool(session and session.get("role") == "owner")
+    except Exception:
+        return True  # 鉴权未启用时保持兼容
+
+
+USER_SETTING_KEYS = {
+    "params", "streaming", "providers", "prompts", "agentParams",
+    "theme", "codeFont", "ligatures", "glass", "displayLimit",
+    "thinking", "autoTools",
+}
+
+
+def _settings_identity(request: Request) -> tuple[str, str]:
+    try:
+        from backend.auth import is_local_access, session_from_scope, _bearer_ok, owner_user_id
+
+        session = session_from_scope(request.scope)
+        if session:
+            return str(session.get("user_id") or ""), str(session.get("role") or "member")
+        if is_local_access(request.scope) or _bearer_ok(request.scope):
+            return owner_user_id(), "owner"
+    except Exception:
+        pass
+    return "", ""
+
+
+def _user_settings_file(user_id: str) -> Path:
+    safe_id = "".join(c for c in user_id if c.isalnum() or c in "_.-")
+    if not safe_id:
+        raise HTTPException(status_code=401, detail="账号信息不可用")
+    path = USER_SETTINGS_DIR / safe_id / "settings.json"
+    return path
+
+
+def _read_user_settings(user_id: str) -> dict:
+    path = _user_settings_file(user_id)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    defaults = _default_settings()
+    # Only expose keys that are deliberately user-scoped. Never inherit admin keys.
+    result = {k: defaults[k] for k in USER_SETTING_KEYS if k in defaults}
+    result.update({k: v for k, v in data.items() if k in USER_SETTING_KEYS})
+    result["agentTools"] = _merge_registered_tools({"agentTools": data.get("agentTools", [])})["agentTools"]
+    return result
+
+
+def _write_user_settings(user_id: str, data: dict) -> None:
+    path = _user_settings_file(user_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    safe = {k: v for k, v in data.items() if k in USER_SETTING_KEYS}
+    safe["_updatedAt"] = datetime.now().isoformat()
+    path.write_text(json.dumps(safe, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        import os
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
 @router.get("")
-async def get_settings():
-    return _read_settings()
+async def get_settings(request: Request):
+    user_id, role = _settings_identity(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if role == "owner":
+        return _read_settings()
+    return _read_user_settings(user_id)
 
 
 @router.put("")
-async def update_settings(data: dict):
-    current = _read_settings()
-    current.update(data)
-    _write_settings(current)
-    return {"status": "ok", "updatedAt": datetime.now().isoformat()}
+async def update_settings(request: Request, data: dict):
+    user_id, role = _settings_identity(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if role == "owner":
+        current = _read_settings()
+        current.update(data)
+        _write_settings(current)
+        return {"status": "ok", "updatedAt": datetime.now().isoformat(), "scope": "instance"}
+    current = _read_user_settings(user_id)
+    current.update({k: v for k, v in data.items() if k in USER_SETTING_KEYS})
+    _write_user_settings(user_id, current)
+    return {"status": "ok", "updatedAt": datetime.now().isoformat(), "scope": "user"}
 
 
 @router.post("/reset")
-async def reset_settings():
-    defaults = _default_settings()
-    _write_settings(defaults)
-    return {"status": "ok", "settings": defaults}
+async def reset_settings(request: Request):
+    user_id, role = _settings_identity(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if role == "owner":
+        defaults = _default_settings()
+        _write_settings(defaults)
+        return {"status": "ok", "settings": defaults, "scope": "instance"}
+    defaults = {k: _default_settings()[k] for k in USER_SETTING_KEYS if k in _default_settings()}
+    defaults["agentTools"] = _merge_registered_tools({"agentTools": []})["agentTools"]
+    _write_user_settings(user_id, defaults)
+    return {"status": "ok", "settings": defaults, "scope": "user"}
 
 
 @router.post("/providers/models")
-async def load_provider_models(request: ProviderModelsRequest):
+async def load_provider_models(request: ProviderModelsRequest, http_request: Request):
+    user_id, role = _settings_identity(http_request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     url = _models_url(request.baseUrl)
     headers = {"Accept": "application/json"}
     if request.key and not request.key.startswith("sk-***"):

@@ -1,16 +1,99 @@
 <template>
-  <main class="memory-page">
-    <header class="hero"><div><div class="eyebrow">PERSONAL CONTEXT</div><h1>兴趣与记忆</h1><p>由你明确填写的兴趣可以帮助助手做相关联想和个性化网络发现。</p></div><span class="hero-icon">🧠</span></header>
-    <section class="card">
-      <div class="card-title"><div><h2>我的兴趣</h2><p>这些内容只作为对话上下文；你可以随时修改或关闭。</p></div><label class="switch"><input v-model="enabled" type="checkbox"><span>允许用于个性化</span></label></div>
-      <label class="field-label" for="interests">每行一个兴趣、爱好或长期关注领域</label>
-      <textarea id="interests" v-model="draft" rows="7" placeholder="例如：开源 AI Agent、前端渲染、独立游戏"></textarea>
-      <div class="field-foot"><span>{{ parsed.length }}/30 项 · 每项最多 80 字</span><button class="save" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存兴趣' }}</button></div>
-      <div v-if="error" class="status error">{{ error }}</div><div v-if="message" class="status success">{{ message }}</div>
-    </section>
-    <section class="card ideas"><h2>快速添加灵感</h2><p>点选后会加到上方列表，你决定保存哪些。</p><div class="chips"><button v-for="idea in suggestions" :key="idea" :disabled="parsed.includes(idea)" @click="addIdea(idea)">＋ {{ idea }}</button></div></section>
-    <aside class="privacy"><span>🔒</span><p>兴趣不会自动从聊天中推断。启用后，HHS 会在相关问题中把你保存的兴趣提供给模型；联网搜索仍由你提出相关需求后才会触发。</p></aside>
-  </main>
+  <div class="ui-page">
+    <div class="ui-page-inner mem-page">
+      <!-- 页头 -->
+      <header class="ui-hero mem-hero">
+        <div class="ui-hero-main">
+          <div class="ui-eyebrow">PERSONAL CONTEXT</div>
+          <h1 class="ui-title">兴趣与记忆</h1>
+          <p class="ui-sub">由你明确填写的兴趣可以帮助助手做相关联想和个性化网络发现。</p>
+        </div>
+        <div class="ui-head-actions">
+          <span class="mem-hero-icon">🧠</span>
+        </div>
+      </header>
+
+      <!-- 指标 -->
+      <div class="ui-grid ui-grid--3 mem-stats">
+        <div class="ui-stat">
+          <div class="ui-stat-label">已保存兴趣</div>
+          <div class="ui-stat-value">{{ parsed.length }}<span class="mem-unit"> / 30</span></div>
+          <div class="ui-stat-hint">每项最多 80 字</div>
+        </div>
+        <div class="ui-stat">
+          <div class="ui-stat-label">个性化联想</div>
+          <div class="ui-stat-value mem-state" :class="{ off: !enabled }">{{ enabled ? '已开启' : '已关闭' }}</div>
+          <div class="ui-stat-hint">可随时在下方关闭</div>
+        </div>
+        <div class="ui-stat">
+          <div class="ui-stat-label">数据来源</div>
+          <div class="ui-stat-value mem-state">仅手动</div>
+          <div class="ui-stat-hint">不会从聊天中推断</div>
+        </div>
+      </div>
+
+      <!-- 兴趣 -->
+      <section class="ui-section mem-section">
+        <div class="ui-section-head">
+          <div>
+            <div class="ui-section-title">我的兴趣</div>
+            <div class="ui-section-sub">这些内容只作为对话上下文；你可以随时修改或关闭。</div>
+          </div>
+          <div class="ui-section-actions">
+            <label class="mem-switch">
+              <input v-model="enabled" class="mem-switch-input" type="checkbox" />
+              <span class="ui-switch" :class="{ on: enabled }"></span>
+              <span class="mem-switch-label">允许用于个性化</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="ui-field mem-field">
+          <label class="ui-label" for="interests">每行一个兴趣、爱好或长期关注领域</label>
+          <textarea
+            id="interests"
+            v-model="draft"
+            class="ui-textarea mem-textarea"
+            rows="7"
+            placeholder="例如：开源 AI Agent、前端渲染、独立游戏"
+          ></textarea>
+        </div>
+
+        <div class="mem-actions">
+          <span class="mem-count">{{ parsed.length }}/30 项 · 每项最多 80 字</span>
+          <button class="ui-btn ui-btn--primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存兴趣' }}</button>
+        </div>
+
+        <div v-if="error" class="mem-status mem-status--bad">{{ error }}</div>
+        <div v-if="message" class="mem-status mem-status--ok">{{ message }}</div>
+      </section>
+
+      <!-- 快速添加灵感 -->
+      <section class="ui-section mem-section">
+        <div class="ui-section-head">
+          <div>
+            <div class="ui-section-title">快速添加灵感</div>
+            <div class="ui-section-sub">点选后会加到上方列表，你决定保存哪些。</div>
+          </div>
+        </div>
+        <div class="mem-chips">
+          <button
+            v-for="idea in suggestions"
+            :key="idea"
+            class="ui-chip mem-chip"
+            :disabled="parsed.includes(idea)"
+            @click="addIdea(idea)"
+          >＋ {{ idea }}</button>
+        </div>
+      </section>
+
+      <!-- 隐私说明 -->
+      <aside class="mem-note">
+        <span class="mem-note-icon">🔒</span>
+        <p>兴趣不会自动从聊天中推断。启用后，HHS 会在相关问题中把你保存的兴趣提供给模型；联网搜索仍由你提出相关需求后才会触发。</p>
+      </aside>
+    </div>
+  </div>
 </template>
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
@@ -36,5 +119,135 @@ async function save() {
 onMounted(load)
 </script>
 <style scoped>
-.memory-page{height:100%;overflow:auto;box-sizing:border-box;padding:clamp(18px,5vw,48px);max-width:900px;margin:auto;color:var(--text)}.hero{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}.eyebrow{font-size:10px;letter-spacing:.16em;color:var(--primary);font-weight:800}.hero h1{font-size:clamp(24px,4vw,34px);margin:7px 0}.hero p,.card-title p,.ideas p{color:var(--text-secondary);font-size:13px;line-height:1.6;margin:0}.hero-icon{font-size:40px}.card{border:1px solid var(--border-light);border-radius:16px;padding:20px;background:color-mix(in srgb,var(--surface) 94%,var(--primary) 6%);margin-bottom:14px}.card-title{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px}.card h2{font-size:16px;margin:0 0 5px}.switch{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);white-space:nowrap}.switch input{accent-color:var(--primary);width:16px;height:16px}.field-label{display:block;font-size:12px;font-weight:700;margin-bottom:8px}textarea{width:100%;box-sizing:border-box;resize:vertical;border:1px solid var(--border-light);border-radius:10px;padding:12px;background:var(--surface);color:var(--text);font:inherit;font-size:13px;line-height:1.7;outline:none}textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 18%,transparent)}.field-foot{display:flex;align-items:center;justify-content:space-between;margin-top:10px;color:var(--text3);font-size:11px}.save{background:var(--primary);color:white;border:0;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer}.save:disabled{opacity:.6}.ideas h2{margin-bottom:5px}.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.chips button{border:1px solid var(--border-light);background:var(--surface);border-radius:999px;padding:7px 10px;color:var(--text-secondary);font-size:11px;cursor:pointer}.chips button:hover:not(:disabled){color:var(--primary);border-color:var(--primary)}.chips button:disabled{opacity:.45;cursor:default}.privacy{display:flex;gap:10px;align-items:flex-start;color:var(--text3);font-size:11px;line-height:1.6;padding:4px 2px}.privacy p{margin:0}.status{margin-top:10px;font-size:12px}.error{color:var(--error)}.success{color:var(--success)}@media(max-width:560px){.card-title{align-items:flex-start;flex-direction:column}.hero-icon{font-size:30px}}
+/* ============================================================
+   Personal Context — Aurora Console
+   ============================================================ */
+/* 中文：============================================================ Personal Context — Aurora Console ============================================================ */
+.mem-page { max-width: 980px; }
+.mem-stats { margin-bottom: 18px; }
+.mem-hero-icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+}
+.mem-unit { font-size: 12px; font-weight: 600; color: var(--text3); letter-spacing: 0; }
+.mem-state { font-size: 18px; letter-spacing: 0; }
+.mem-state.off { color: var(--text3); }
+
+/* ---------------- 开关 ---------------- */
+.mem-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  color: var(--text2);
+  white-space: nowrap;
+}
+.mem-switch-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.mem-switch:hover .mem-switch-label { color: var(--text); }
+
+/* ---------------- 输入区 ---------------- */
+.mem-field { margin-bottom: 10px; }
+.mem-textarea {
+  min-height: 168px;
+  font-size: 13px;
+  line-height: 1.75;
+  padding: 12px 14px;
+}
+.mem-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.mem-count { font-size: 11px; color: var(--text3); }
+
+.mem-status {
+  margin-top: 12px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  line-height: 1.55;
+  border: 1px solid transparent;
+}
+.mem-status--bad {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+  border-color: color-mix(in srgb, var(--error) 26%, transparent);
+}
+.mem-status--ok {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  border-color: color-mix(in srgb, var(--success) 26%, transparent);
+}
+
+/* ---------------- 灵感 chip ---------------- */
+.mem-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.mem-chip {
+  height: 30px;
+  padding: 0 12px;
+  font-size: 11.5px;
+  cursor: pointer;
+  color: var(--text2);
+}
+.mem-chip:hover:not(:disabled) {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  background: var(--primary-soft);
+}
+.mem-chip:disabled {
+  opacity: 0.42;
+  cursor: default;
+  color: var(--text3);
+  border-style: dashed;
+}
+
+/* ---------------- 隐私说明 ---------------- */
+.mem-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text2);
+}
+.mem-note-icon { font-size: 14px; line-height: 1.6; flex-shrink: 0; }
+.mem-note p { margin: 0; font-size: 11.5px; line-height: 1.7; color: var(--text3); }
+
+/* AIOS-MOBILE */
+/* 中文：AIOS-MOBILE */
+@media (max-width: 767px) {
+  .mem-page { max-width: 100%; }
+  .mem-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .mem-stats .ui-stat { padding: 10px; }
+  .mem-stats .ui-stat-value { font-size: 16px; }
+  .mem-stats .ui-stat-hint { display: none; }
+  .mem-state { font-size: 13px; }
+  .mem-hero-icon { font-size: 28px; }
+
+  .mem-textarea { min-height: 150px; }
+  .mem-actions { justify-content: flex-start; }
+  .mem-actions .ui-btn { width: 100%; }
+  .mem-chip { height: 34px; padding: 0 13px; }
+  .mem-note { padding: 12px 14px; }
+}
+/* /AIOS-MOBILE */
+/* 中文：/AIOS-MOBILE */
 </style>

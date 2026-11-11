@@ -13,7 +13,7 @@ class MemoryItem:
     """记忆项"""
     id: str
     content: str
-    type: str  # session / summary / long / vector / fact
+    type: str  # session / summary / long / vector / fact  ｜ session / summary / long / vector / fact
     timestamp: float = field(default_factory=lambda: datetime.now().timestamp())
     metadata: Dict = field(default_factory=dict)
     embedding: Optional[List[float]] = None

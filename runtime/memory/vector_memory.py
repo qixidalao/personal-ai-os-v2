@@ -85,7 +85,7 @@ class VectorMemory(BaseMemory):
         self.dimension = int(config.get("dimension", 1536))
         self.top_k = int(config.get("top_k", 5))
         self.similarity = config.get("similarity", "cosine")
-        self.embed_fn = embed_fn  # async (texts) -> List[List[float]]
+        self.embed_fn = embed_fn  # async (texts) -> List[List[float]]  ｜ async (texts) -> List[List[float]]
         self._lock = threading.Lock()
         self._init_db()
 

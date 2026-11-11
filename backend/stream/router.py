@@ -36,7 +36,7 @@ async def stream_chat(request: Request):
                     }
                     yield f"event: {event.type}\ndata: {json.dumps(sse_data, ensure_ascii=False)}\n\n"
                 except asyncio.TimeoutError:
-                    yield f": keepalive\n\n"  # SSE keepalive
+                    yield f": keepalive\n\n"  # SSE keepalive  ｜ SSE 保活
         finally:
             event_bus.unsubscribe("*", handler)
 

@@ -1,4 +1,5 @@
 """Model-accessible read-only Agent Skills."""
+# 中文：模型可访问的只读 Agent Skills。
 from __future__ import annotations
 
 import json
@@ -23,6 +24,7 @@ def _enabled_skills() -> set[str]:
     "read_skill",
     "按 skill_id 读取已启用的 Agent Skill 指南。先根据 system 中的技能目录选择相关技能，再调用本工具。",
     "skills",
+    # 中文：技能
 )
 def read_skill(skill_id: str) -> dict:
     """读取一个已启用的本地 Markdown Agent Skill。"""

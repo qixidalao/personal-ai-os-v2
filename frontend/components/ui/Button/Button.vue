@@ -14,8 +14,8 @@
 
 <script setup lang="ts">
 defineProps({
-  variant: { type: String, default: 'primary' }, // primary | secondary | ghost | danger
-  size: { type: String, default: 'md' }, // sm | md | lg
+  variant: { type: String, default: 'primary' }, // primary | secondary | ghost | danger  ｜ primary | secondary | ghost | danger
+  size: { type: String, default: 'md' }, // sm | md | lg  ｜ sm | md | lg
   loading: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
 })
@@ -45,11 +45,13 @@ defineEmits(['click'])
 }
 
 /* Sizes */
+/* 中文：尺寸 */
 .ai-btn--sm { padding: 4px 12px; font-size: 12px; }
 .ai-btn--md { padding: 8px 16px; font-size: 14px; }
 .ai-btn--lg { padding: 12px 24px; font-size: 16px; }
 
 /* Variants */
+/* 中文：变体 */
 .ai-btn--primary {
   background: var(--primary);
   color: #fff;
@@ -79,6 +81,7 @@ defineEmits(['click'])
 .ai-btn--danger:hover:not(:disabled) { opacity: 0.9; }
 
 /* States */
+/* 中文：状态 */
 .ai-btn--disabled { opacity: 0.5; cursor: not-allowed; }
 .ai-btn--loading { cursor: wait; }
 

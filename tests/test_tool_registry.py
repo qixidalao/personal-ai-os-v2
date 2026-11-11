@@ -24,6 +24,7 @@ class TestToolRegistry:
         @ToolRegistry.register("test_tool", "A test tool", "testing")
         def test_tool(param1: str, param2: int):
             """Do something"""
+            # 中文：执行某项操作
             return f"{param1}:{param2}"
 
         tool = ToolRegistry.get("test_tool")

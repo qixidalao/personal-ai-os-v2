@@ -15,11 +15,16 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${HHS_PORT:-8080}"
 LOG_FILE="/tmp/hhs.log"
 PID_FILE="/tmp/hhs.pid"
-NODE_BIN="/home/qixi/.local/bin/node"
-PYTHON_BIN="/home/qixi/mcp_agent/.venv/bin/python"
+NODE_BIN="${HHS_NODE_BIN:-$(command -v node || true)}"
+PYTHON_BIN="${HHS_PYTHON_BIN:-$(command -v python3 || command -v python || true)}"
+HOST="${HHS_HOST:-127.0.0.1}"
 
-if [ ! -x "$PYTHON_BIN" ]; then
-  PYTHON_BIN="$(command -v python3 || true)"
+if [ -x "$SCRIPT_DIR/.venv/bin/python" ]; then
+  PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python"
+fi
+if [ -z "$PYTHON_BIN" ]; then
+  echo "[hhs] Python 3.11+ not found. Install Python or set HHS_PYTHON_BIN." >&2
+  exit 1
 fi
 
 cd "$SCRIPT_DIR"
@@ -62,14 +67,9 @@ kill_port() {
 
 build_frontend() {
   info "构建前端..."
-  if [ ! -f "$NODE_BIN" ]; then
-    warn "未找到 node ($NODE_BIN)，尝试 system node..."
-    if command -v node &>/dev/null; then
-      NODE_BIN="node"
-    else
-      err "找不到 node，跳过前端构建"
-      return 1
-    fi
+  if [ -z "$NODE_BIN" ]; then
+    err "找不到 Node.js，请先安装 Node.js 18+ 并启用 PATH"
+    return 1
   fi
   cd "$SCRIPT_DIR/frontend"
   if "$NODE_BIN" node_modules/.bin/vite build 2>&1 | tail -5; then
@@ -91,7 +91,7 @@ start_service() {
 
   # 后台启动，把 PID 记下来
   nohup "$PYTHON_BIN" -m uvicorn backend.main:app \
-    --host 0.0.0.0 \
+    --host "$HOST" \
     --port "$PORT" \
     > "$LOG_FILE" 2>&1 &
   local pid=$!
@@ -120,13 +120,13 @@ start_service_dev() {
 
   info "启动 hhs 服务 (前台模式, 端口 $PORT)..."
   echo ""
-  echo "  📍  http://localhost:$PORT"
+  echo "  📍  http://$HOST:$PORT"
   echo "  ⌨️  按 Ctrl+C 停止服务"
   echo ""
 
   # 前台运行，日志直接打终端
   "$PYTHON_BIN" -m uvicorn backend.main:app \
-    --host 0.0.0.0 \
+    --host "$HOST" \
     --port "$PORT"
 }
 
@@ -163,7 +163,7 @@ show_status() {
   if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
     ok "hhs 服务运行中 (PID $pid, 端口 $PORT)"
     echo ""
-    echo "  📍  http://localhost:$PORT"
+    echo "  📍  http://$HOST:$PORT"
     echo "  🕒  启动时间: $(ps -o lstart= -p "$pid" 2>/dev/null || echo '未知')"
     echo ""
     echo "  ── 最近日志 ──"

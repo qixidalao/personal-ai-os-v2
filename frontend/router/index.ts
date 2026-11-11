@@ -49,9 +49,7 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/profile',
-    name: 'Profile',
-    component: () => import('@/pages/ProfilePage.vue'),
-    meta: { title: 'Profile', icon: 'User' },
+    redirect: '/agent',
   },
   {
     path: '/history',
@@ -66,8 +64,19 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '搜索', icon: 'Search' },
   },
   {
+    path: '/runs',
+    name: 'Runs',
+    component: () => import('@/pages/RunHistoryPage.vue'),
+    meta: { title: '执行记录', icon: 'Activity' },
+  },
+  {
     path: '/settings',
     name: 'Settings',
+    component: () => import('@/pages/SettingsPage.vue'),
+  },
+  {
+    path: '/admin',
+    name: 'Admin',
     component: () => import('@/pages/SettingsPage.vue'),
   },
 ]
@@ -75,6 +84,19 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHashHistory(),
   routes,
+})
+
+router.beforeEach(async (to) => {
+  if (to.path === '/admin') {
+    try {
+      const resp = await fetch('/api/v1/auth/me')
+      const data = await resp.json()
+      if (!(data.local === true || data.role === 'owner')) return '/settings'
+    } catch {
+      return '/settings'
+    }
+  }
+  return true
 })
 
 export default router

@@ -1,12 +1,13 @@
 """Conservative 2x general photo enhancement using local Real-ESRGAN."""
+# 中文：使用本地 Real-ESRGAN 进行保守的 2 倍通用照片增强。
 from __future__ import annotations
 import os, subprocess, tempfile
 from pathlib import Path
 from tools import ToolRegistry
 from tools.media import MEDIA_DIR, send_image
-DEFAULT_PYTHON = "/mnt/c/Users/one/Documents/Codex/2026-10-28/new-chat/work/face-restoration/.venv/Scripts/python.exe"
-DEFAULT_REPO = "/mnt/c/Users/one/Documents/Codex/2026-10-28/new-chat/work/face-restoration/CodeFormer"
-DEFAULT_MODEL = f"{DEFAULT_REPO}/weights/CodeFormer/RealESRGAN_x2plus.pth"
+DEFAULT_PYTHON = os.getenv("HHS_REALESRGAN_PYTHON", "")
+DEFAULT_REPO = os.getenv("HHS_REALESRGAN_REPO", "")
+DEFAULT_MODEL = os.getenv("HHS_REALESRGAN_MODEL", "")
 _RUNNER = r"""
 import cv2, sys, torch
 repo, source, destination, model_path, amount = sys.argv[1:]
@@ -24,6 +25,11 @@ base=cv2.resize(img,(w*2,h*2),interpolation=cv2.INTER_LANCZOS4)
 result=cv2.addWeighted(base,1.0-float(amount),restored,float(amount),0)
 if not cv2.imwrite(destination,result,[cv2.IMWRITE_JPEG_QUALITY,94]): raise RuntimeError("无法保存修复图片")
 """
+def enhancement_available() -> bool:
+    return bool(DEFAULT_PYTHON and DEFAULT_REPO and DEFAULT_MODEL and
+                Path(DEFAULT_PYTHON).is_file() and Path(DEFAULT_MODEL).is_file())
+
+
 def enhance_image_file(source: str | Path, blend_strength: float=0.3) -> Path:
     source=Path(source).expanduser().resolve()
     if not source.is_file(): raise FileNotFoundError(f"图片不存在: {source}")
@@ -41,7 +47,10 @@ def enhance_image_file(source: str | Path, blend_strength: float=0.3) -> Path:
         return output
     except Exception: output.unlink(missing_ok=True); raise
 @ToolRegistry.register("restore_image","对本地照片进行保守的通用清晰化和2倍放大，不做人脸重建；传入本机图片路径，可选融合强度0.1-0.65（默认0.3）。","media")
+                                                                                                                                                                                                   # 中文：媒体
 def restore_image(path: str,blend_strength: float=0.3)->dict:
+    if not enhancement_available():
+        raise RuntimeError("图片增强功能未安装或未配置；请在实例管理员的部署环境中安装 Real-ESRGAN 模型后启用")
     result=enhance_image_file(path,blend_strength)
     try: return send_image(str(result),caption="照片清晰化（Real-ESRGAN x2）")
     finally: result.unlink(missing_ok=True)

@@ -254,6 +254,7 @@ async def send_hotkey_screenshot(
     x_hotkey_token: str = Header(default=""),
 ):
     """Send a locally captured screenshot through the active NapCat connection."""
+    # 中文：通过当前 NapCat 连接发送本地截取的屏幕截图。
     expected_token = os.getenv("HHS_SCREENSHOT_HOTKEY_TOKEN", "")
     recipient = os.getenv("HHS_SCREENSHOT_RECIPIENT", "")
     if not expected_token or not secrets.compare_digest(x_hotkey_token, expected_token):

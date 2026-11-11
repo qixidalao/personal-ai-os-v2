@@ -39,8 +39,12 @@ async def detailed_health():
 
     # 检查 skills 目录
     skills_dir = Path("skills")
+                      # 中文：技能
+
     if skills_dir.exists():
         health["skills"] = {
+               # 中文：技能
+
             "count": len(list(skills_dir.glob("*/SKILL.md"))),
             "enabled": [d.name for d in skills_dir.iterdir() if d.is_dir()],
         }
@@ -61,8 +65,12 @@ async def system_status():
             "streaming": True,
             "tools": True,
             "skills": True,
+            # 中文：技能
+
             "memory": True,
             "media": True,
+            # 中文：媒体
+
             "onebot": True,
         },
         "stats": {

@@ -1,4 +1,5 @@
 """Structured image delivery tool for Web and OneBot/QQNT."""
+# 中文：面向 Web 和 OneBot/QQNT 的结构化图像传输工具。
 from __future__ import annotations
 
 import hashlib
@@ -12,6 +13,7 @@ from tools import ToolRegistry
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MEDIA_DIR = PROJECT_ROOT / "storage" / "media"
+                                       # 中文：媒体
 INDEX_FILE = MEDIA_DIR / "index.json"
 MAX_IMAGE_BYTES = 20 * 1024 * 1024
 ALLOWED_MIME = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"}
@@ -47,6 +49,7 @@ def is_media_descriptor(value: Any) -> bool:
     "send_image",
     "把已生成或已有的本地图片真正发送到当前对话。必须传图片文件路径；禁止读取或输出 base64。",
     "media",
+    # 中文：媒体
 )
 def send_image(path: str, caption: str = "") -> dict[str, Any]:
     source = Path(path).expanduser().resolve()
@@ -79,5 +82,5 @@ def send_image(path: str, caption: str = "") -> dict[str, Any]:
     index = _read_index()
     index[digest] = record
     _write_index(index)
-    # Small structured result only. Image bytes never enter the LLM context or SSE text stream.
+    # Small structured result only. Image bytes never enter the LLM context or SSE text stream.  ｜ 仅返回少量结构化结果。图像字节不会进入 LLM 上下文或 SSE 文本流。
     return record

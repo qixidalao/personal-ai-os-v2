@@ -1,4 +1,5 @@
 """Read-only inventory for local Markdown Agent Skills."""
+# 中文：本地 Markdown Agent Skills 的只读清单。
 from pathlib import Path
 import json
 
@@ -7,6 +8,7 @@ from fastapi import APIRouter
 from runtime.skills.registry import DEFAULT_ENABLED_SKILLS, list_skills
 
 router = APIRouter(prefix="/api/v1/skills", tags=["skills"])
+                                                  # 中文：技能
 SETTINGS_FILE = Path("storage/settings.json")
 
 
@@ -24,3 +26,4 @@ async def get_skills():
     enabled = _enabled_ids()
     skills = [{**skill, "enabled": skill["id"] in enabled} for skill in list_skills()]
     return {"skills": skills, "count": len(skills)}
+            # 中文：技能

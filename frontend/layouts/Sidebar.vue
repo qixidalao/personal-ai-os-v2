@@ -1,6 +1,7 @@
 <template>
   <aside :class="['sidebar', { 'sidebar--collapsed': collapsed }]">
     <!-- Logo -->
+    <!-- 中文：Logo -->
     <div class="sidebar__logo" @click="router.push('/')">
       <span class="logo-icon">🧠</span>
       <span v-show="!collapsed" class="logo-text">AI OS</span>

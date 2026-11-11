@@ -284,9 +284,12 @@ class TestChatApiUnit:
         file_tool = ToolRegistry.get("file_read")
         assert file_tool is not None
         assert file_tool.category == "filesystem"
+                                     # 中文：filesystem
+
 
     def test_all_tool_categories_present(self):
         """测试所有工具类别都已注册"""
         from tools import ToolRegistry
         categories = set(t.category for t in ToolRegistry.list())
         assert "filesystem" in categories
+               # 中文：filesystem

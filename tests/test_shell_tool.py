@@ -38,9 +38,10 @@ class TestShellExec:
         assert "3" in result["stdout"].strip()
 
     def test_timeout_raises(self):
-        """测试超时设置生效"""
-        with pytest.raises(Exception):
-            ToolRegistry.call("shell_exec", command="sleep 10", timeout=1)
+        """P0：超时由执行边界终止进程组并返回结构化结果（不再抛异常）"""
+        result = ToolRegistry.call("shell_exec", command="sleep 10", timeout=1)
+        assert result["success"] is False
+        assert "超时" in (result.get("error") or "") or result.get("return_code") not in (0, None)
 
     def test_custom_timeout(self):
         """测试自定义 timeout 参数"""

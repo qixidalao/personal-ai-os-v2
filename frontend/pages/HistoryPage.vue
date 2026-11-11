@@ -1,11 +1,11 @@
-<template>
+﻿<template>
   <div class="ui-page">
     <div class="ui-page-inner">
-      <header class="ui-head">
-        <div>
-          <div class="ui-eyebrow">Archive</div>
+      <header class="ui-hero hist-hero">
+        <div class="ui-hero-main">
+          <div class="ui-eyebrow">ARCHIVE</div>
           <h1 class="ui-title">历史记录</h1>
-          <p class="ui-sub">所有对话按时间归档。可以搜索内容、复制会话、导出为 Markdown，或批量清理。</p>
+          <p class="ui-sub">所有对话按时间归档，可检索、导出与批量清理。</p>
         </div>
         <div class="ui-head-actions">
           <button class="ui-btn" :disabled="loading" @click="load">
@@ -14,89 +14,110 @@
         </div>
       </header>
 
-      <div class="stat-row">
-        <div class="stat" v-for="s in stats" :key="s.label">
-          <div class="stat-icon" :style="{ color: s.color, background: s.bg }">
-            <component :is="s.icon" :size="15" />
+      <div class="ui-grid ui-grid--4 hist-stats">
+        <div v-for="s in stats" :key="s.label" class="ui-stat hist-stat">
+          <div class="hist-stat-head">
+            <span class="ui-stat-label">{{ s.label }}</span>
+            <span class="hist-stat-icon" :style="{ color: s.color, background: s.bg }">
+              <component :is="s.icon" :size="14" />
+            </span>
           </div>
-          <div>
-            <div class="stat-value">{{ s.value }}</div>
-            <div class="stat-label">{{ s.label }}</div>
+          <div class="ui-stat-value">{{ s.value }}</div>
+          <div class="ui-stat-hint">
+            {{ s.label === '会话总数' ? '全部归档' : s.label === '今日活跃' ? '24 小时内' : s.label === '本周更新' ? '近 7 天' : '已打标' }}
           </div>
         </div>
       </div>
 
-      <div class="toolbar">
-        <div class="tb-search">
-          <Search :size="14" />
-          <input v-model="query" placeholder="搜索标题或摘要…" />
-          <button v-if="query" class="tb-clear" @click="query = ''"><X :size="12" /></button>
+      <div class="ui-toolbar hist-toolbar">
+        <div class="hist-searchbox">
+          <Search :size="14" class="hist-search-icon" />
+          <input v-model="query" class="ui-input hist-search" placeholder="搜索标题或摘要…" />
+          <button v-if="query" class="hist-search-clear" title="清空" @click="query = ''">
+            <X :size="12" />
+          </button>
         </div>
 
-        <div class="sort-group">
+        <div class="ui-seg hist-sort">
           <button
             v-for="opt in sortOptions"
             :key="opt.key"
-            :class="['ui-chip', { active: sortBy === opt.key }]"
+            :class="['ui-seg-item', { active: sortBy === opt.key }]"
             @click="sortBy = opt.key"
           >{{ opt.label }}</button>
         </div>
 
-        <div class="view-toggle">
-          <button :class="['vt-btn', { on: view === 'card' }]" @click="view = 'card'" title="卡片视图">
+        <div class="ui-seg hist-view">
+          <button :class="['ui-seg-item', { active: view === 'card' }]" @click="view = 'card'" title="卡片视图">
             <LayoutGrid :size="14" />
           </button>
-          <button :class="['vt-btn', { on: view === 'list' }]" @click="view = 'list'" title="列表视图">
+          <button :class="['ui-seg-item', { active: view === 'list' }]" @click="view = 'list'" title="列表视图">
             <List :size="14" />
           </button>
         </div>
       </div>
 
-      <div v-if="loading" class="group">
-        <div v-for="i in 6" :key="i" class="ui-skeleton" style="height: 78px; margin-bottom: 10px"></div>
+      <div v-if="loading" class="hist-skel">
+        <div v-for="i in 6" :key="i" class="ui-skeleton hist-skel-item"></div>
       </div>
 
       <div v-else-if="!groups.length" class="ui-empty">
         <div class="ui-empty-icon">🗂️</div>
         <div class="ui-empty-title">{{ query ? '没有匹配的会话' : '还没有任何会话' }}</div>
         <div class="ui-empty-desc">{{ query ? '换个关键词试试，或清空搜索条件。' : '开始一次对话后，记录会自动出现在这里。' }}</div>
-        <button v-if="!query" class="ui-btn ui-btn--primary" style="margin-top: 8px" @click="createChat">
+        <button v-if="!query" class="ui-btn ui-btn--primary" @click="createChat">
           <Plus :size="14" /> 新建对话
         </button>
       </div>
 
       <div v-else class="groups" :class="view">
-        <section v-for="g in groups" :key="g.name" class="group">
-          <div class="group-title">
-            <span>{{ g.name }}</span>
-            <em>{{ g.items.length }}</em>
-            <div class="group-line"></div>
+        <section v-for="g in groups" :key="g.name" class="ui-section hist-group">
+          <div class="ui-section-head">
+            <div class="hist-group-main">
+              <h2 class="ui-section-title">{{ g.name }}</h2>
+              <p class="ui-section-sub">{{ g.items.length }} 个会话</p>
+            </div>
+            <div class="ui-section-actions">
+              <span class="ui-badge">{{ g.items.length }} 项</span>
+            </div>
           </div>
 
-          <div class="items">
+          <div class="hist-items">
             <article
               v-for="s in g.items"
               :key="s.id"
-              class="hcard"
+              class="ui-card ui-card--hover hcard"
               @click="goSession(s.id)"
             >
-              <div class="hcard-icon">{{ s.icon || '💬' }}</div>
-              <div class="hcard-body">
-                <div class="hcard-top">
-                  <h3 class="hcard-title">{{ s.title || '新对话' }}</h3>
-                  <span v-if="s.tag" class="ui-badge ui-badge--primary">{{ s.tag }}</span>
-                </div>
-                <p class="hcard-preview">{{ cleanPreview(s.preview) || '（暂无内容）' }}</p>
-                <div class="hcard-meta">
-                  <span><Clock :size="11" /> {{ fmtDate(s.updated_at || s.created_at) }}</span>
-                  <span><Hash :size="11" /> {{ s.id }}</span>
+              <div class="hcard-top">
+                <div class="hcard-icon">{{ s.icon || '💬' }}</div>
+                <div class="hcard-head">
+                  <div class="hcard-title-row">
+                    <h3 class="hcard-title">{{ s.title || '新对话' }}</h3>
+                    <span v-if="s.tag" class="ui-badge ui-badge--primary">{{ s.tag }}</span>
+                  </div>
+                  <div class="hcard-meta">
+                    <span><Clock :size="11" /> {{ fmtDate(s.updated_at || s.created_at) }}</span>
+                    <span><Hash :size="11" /> {{ s.id }}</span>
+                  </div>
                 </div>
               </div>
+
+              <p class="hcard-preview">{{ cleanPreview(s.preview) || '（暂无内容）' }}</p>
+
               <div class="hcard-actions" @click.stop>
-                <button class="act" title="打开" @click="goSession(s.id)"><CornerUpRight :size="14" /></button>
-                <button class="act" title="复制会话" @click="duplicate(s)"><Copy :size="14" /></button>
-                <button class="act" title="导出 Markdown" @click="exportMd(s)"><Download :size="14" /></button>
-                <button class="act act--danger" title="删除" @click="remove(s)"><Trash2 :size="14" /></button>
+                <button class="ui-btn ui-btn--sm ui-btn--ghost ui-btn--icon" title="打开" @click="goSession(s.id)">
+                  <CornerUpRight :size="14" />
+                </button>
+                <button class="ui-btn ui-btn--sm ui-btn--ghost ui-btn--icon" title="复制会话" @click="duplicate(s)">
+                  <Copy :size="14" />
+                </button>
+                <button class="ui-btn ui-btn--sm ui-btn--ghost ui-btn--icon" title="导出 Markdown" @click="exportMd(s)">
+                  <Download :size="14" />
+                </button>
+                <button class="ui-btn ui-btn--sm ui-btn--danger ui-btn--icon" title="删除" @click="remove(s)">
+                  <Trash2 :size="14" />
+                </button>
               </div>
             </article>
           </div>
@@ -292,145 +313,100 @@ onMounted(load)
 </script>
 
 <style scoped>
-.stat-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
-}
+/* ---------- hero / 统计 ---------- */
+.hist-hero { margin-bottom: 22px; }
 
-.stat {
+.hist-stats { margin-bottom: 20px; }
+.hist-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.hist-stat-head {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 14px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--r-md);
-  background: var(--surface);
-  transition: border-color var(--t-mid), transform var(--t-mid);
+  justify-content: space-between;
+  gap: 8px;
 }
-.stat:hover { border-color: var(--border-strong); transform: translateY(-1px); }
-
-.stat-icon {
-  width: 34px;
-  height: 34px;
+.hist-stat-icon {
+  width: 28px;
+  height: 28px;
   border-radius: var(--r-sm);
   display: grid;
   place-items: center;
   flex-shrink: 0;
 }
-.stat-value { font-size: 19px; font-weight: 720; letter-spacing: -0.02em; line-height: 1.2; }
-.stat-label { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.hist-stat .ui-stat-head { margin-bottom: 4px; }
 
-.toolbar {
+/* ---------- 工具条 ---------- */
+.hist-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 20px;
+  margin-bottom: 22px;
 }
-
-.tb-search {
-  flex: 1;
-  min-width: 200px;
-  max-width: 380px;
+.hist-searchbox {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 11px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--text3);
-  transition: border-color var(--t-fast), box-shadow var(--t-fast);
-}
-.tb-search:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
-.tb-search input {
-  flex: 1;
+  flex: 1 1 240px;
   min-width: 0;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--text);
-  font-size: 12.5px;
+  max-width: 380px;
 }
-.tb-clear {
-  border: none;
-  background: transparent;
+.hist-search-icon {
+  position: absolute;
+  left: 12px;
   color: var(--text3);
-  display: grid;
-  place-items: center;
-  padding: 2px;
-  border-radius: 4px;
+  pointer-events: none;
 }
-.tb-clear:hover { color: var(--text); background: var(--surface-alt); }
-
-.sort-group { display: flex; gap: 6px; flex-wrap: wrap; }
-
-.view-toggle {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--r-sm);
-  background: var(--surface-alt);
-  margin-left: auto;
+.hist-search {
+  height: 34px;
+  padding-left: 34px;
+  padding-right: 36px;
 }
-.vt-btn {
-  width: 28px;
-  height: 26px;
+.hist-search-clear {
+  position: absolute;
+  right: 6px;
+  width: 22px;
+  height: 22px;
   display: grid;
   place-items: center;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--r-xs);
   background: transparent;
   color: var(--text3);
-  transition: all var(--t-fast);
+  transition: color var(--t-fast), background var(--t-fast);
 }
-.vt-btn.on { background: var(--surface); color: var(--primary); box-shadow: var(--shadow-sm); }
+.hist-search-clear:hover { color: var(--text); background: var(--surface-alt); }
 
-.group { margin-bottom: 26px; }
-.group-title {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text2);
-  margin-bottom: 12px;
-}
-.group-title em {
-  font-style: normal;
-  font-size: 10px;
-  color: var(--text3);
-  background: var(--surface-alt);
-  border-radius: var(--r-full);
-  padding: 1px 7px;
-}
-.group-line { flex: 1; height: 1px; background: var(--border-light); }
+.hist-sort { flex-wrap: nowrap; }
+.hist-view { margin-left: auto; }
 
-.items { display: grid; gap: 10px; }
-.groups.card .items { grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
-.groups.list .items { grid-template-columns: 1fr; }
+/* ---------- 加载 ---------- */
+.hist-skel { display: flex; flex-direction: column; gap: 10px; }
+.hist-skel-item { height: 92px; }
 
+/* ---------- 分组 / 网格 ---------- */
+.hist-group { margin-bottom: 26px; }
+.hist-group-main { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.hist-group .ui-section-title { font-size: 14px; }
+.hist-group .ui-section-sub { margin: 0; }
+
+.hist-items { display: grid; gap: 12px; }
+.groups.card .hist-items { grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+.groups.list .hist-items { grid-template-columns: minmax(0, 1fr); }
+
+/* ---------- 档案卡片 ---------- */
 .hcard {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--r-md);
-  background: var(--surface);
+  flex-direction: column;
+  gap: 10px;
+  padding: 15px 16px;
   cursor: pointer;
-  position: relative;
-  transition: border-color var(--t-mid), transform var(--t-mid), box-shadow var(--t-mid);
 }
-.hcard:hover {
-  border-color: color-mix(in srgb, var(--primary) 42%, transparent);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
+.hcard-top { display: flex; align-items: flex-start; gap: 10px; }
 .hcard-icon {
   width: 32px;
   height: 32px;
@@ -438,70 +414,89 @@ onMounted(load)
   background: var(--surface-alt);
   display: grid;
   place-items: center;
-  font-size: 14px;
+  font-size: 15px;
   flex-shrink: 0;
 }
-
-.hcard-body { flex: 1; min-width: 0; }
-.hcard-top { display: flex; align-items: center; gap: 8px; }
+.hcard-head { flex: 1; min-width: 0; }
+.hcard-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .hcard-title {
-  font-size: 13px;
-  font-weight: 620;
+  font-size: 13.5px;
+  font-weight: 640;
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.hcard-title-row .ui-badge { flex-shrink: 0; }
+.hcard-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: var(--text3);
+  font-family: var(--font-mono);
+}
+.hcard-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.hcard-meta span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .hcard-preview {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text2);
-  line-height: 1.55;
-  margin-top: 4px;
+  line-height: 1.6;
+  min-height: 38px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.hcard-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-  font-size: 10.5px;
-  color: var(--text3);
-}
-.hcard-meta span { display: flex; align-items: center; gap: 4px; }
-
 .hcard-actions {
   display: flex;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity var(--t-fast);
-  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-light);
 }
-.hcard:hover .hcard-actions { opacity: 1; }
-
-.act {
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text3);
-  transition: all var(--t-fast);
-}
-.act:hover { background: var(--surface-alt); color: var(--text); }
-.act--danger:hover { background: color-mix(in srgb, var(--error) 14%, transparent); color: var(--error); }
+.hcard-actions .ui-btn { opacity: 0.55; }
+.hcard:hover .hcard-actions .ui-btn { opacity: 1; }
+.hcard-actions .ui-btn--danger { margin-left: auto; }
 
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-@media (max-width: 640px) {
-  .groups.card .items { grid-template-columns: 1fr; }
-  .hcard-actions { opacity: 1; }
-  .view-toggle { display: none; }
+/* ---------- 移动端 ---------- */
+@media (max-width: 767px) {
+  .hist-hero { margin-bottom: 16px; }
+  .hist-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hist-stat { padding: 12px 12px 10px; }
+  .hist-stat .ui-stat-value { font-size: 20px; }
+
+  .hist-toolbar { gap: 8px; margin-bottom: 16px; }
+  .hist-searchbox { flex: 1 1 100%; max-width: none; }
+  .hist-sort {
+    flex: 1 1 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .hist-sort::-webkit-scrollbar { display: none; }
+  .hist-sort .ui-seg-item { flex-shrink: 0; }
+  .hist-view { margin-left: 0; width: auto; flex: 0 0 auto; }
+
+  .hist-group { margin-bottom: 20px; }
+  .hist-items,
+  .groups.card .hist-items,
+  .groups.list .hist-items { grid-template-columns: minmax(0, 1fr); }
+  .hcard { padding: 13px 14px; }
+  .hcard-actions .ui-btn { opacity: 1; }
+  .hcard-preview { -webkit-line-clamp: 3; line-clamp: 3; }
 }
 </style>

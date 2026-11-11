@@ -9,7 +9,7 @@ import json
 
 @dataclass
 class LLMMessage:
-    role: str  # system / user / assistant / tool
+    role: str  # system / user / assistant / tool  ｜ system / user / assistant / tool
     content: str
     tool_calls: Optional[list] = None
     tool_call_id: Optional[str] = None

@@ -1,5 +1,8 @@
 # DeepSeek Harness 借鉴记录
 
+> **历史/参考文档**：本文可能描述早期版本或研究记录，不是当前安装与使用说明。当前版本请先看 [README](../../README.md)、[用户手册](../AIOS-使用手册.md) 和 [执行器接入指南](../AIOS-执行器接入指南.md)。
+
+
 > 日期：2026-08-21
 > 项目：DeepSeek 官方开源的 Agent Harness（`npx @deepseek-ai/dsh web`，MIT）
 > 核心理念：**一切皆插件**（含 agent loop 本身、模型适配器、工具注册表、会话日志），Cordis 驱动

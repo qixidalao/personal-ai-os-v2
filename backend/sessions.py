@@ -1,8 +1,9 @@
 """
-Personal AI OS — 会话管理 API
-每个会话一个独立 JSON 文件，落盘存储
+Personal AI OS — 会话管理 API（多用户 Phase 1：归属隔离）
+每个会话一个独立 JSON 文件；meta.owner_user_id 标记归属。
+owner 可看全部；member 只能看/改/删自己的，越权一律 404。
 """
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from pathlib import Path
@@ -10,10 +11,14 @@ import json
 import uuid
 from datetime import datetime
 
+from backend.ownership import can_access_session, identity, owner_user_id, read_session_meta
+
 router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
 
 STORAGE_DIR = Path("storage/sessions")
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+
 class Message(BaseModel):
     id: str
     role: str
@@ -30,11 +35,14 @@ class Message(BaseModel):
     reasoningExpanded: bool = False
     toolsExpanded: bool = False
     usage: dict | None = None
+    images: list[str] | None = None
     createdAt: int | None = None
     finishedAt: int | None = None
     tokPerSec: int | None = None
     cachedTokens: int | None = None
     cumTokens: int | None = None
+    source: str | None = None
+    trust: str | None = None
 
 
 class SessionMeta(BaseModel):
@@ -46,6 +54,7 @@ class SessionMeta(BaseModel):
     tag: str = ""
     created_at: str = ""
     updated_at: str = ""
+    owner_user_id: str = ""
 
 
 class SessionMetaPatch(BaseModel):
@@ -83,8 +92,17 @@ def _write_session(session_id: str, data: SessionData):
     )
 
 
+def _checked_session(request: Request, session_id: str) -> SessionData:
+    data = _read_session(session_id)
+    user_id, role = identity(request)
+    if not can_access_session(data.meta.model_dump(), user_id, role):
+        raise HTTPException(status_code=404, detail="Session not found")
+    return data
+
+
 @router.get("")
-async def list_sessions():
+async def list_sessions(request: Request):
+    user_id, role = identity(request)
     sessions = []
     for f in sorted(STORAGE_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
         if f.stat().st_size == 0:
@@ -92,15 +110,20 @@ async def list_sessions():
             continue
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
-            sessions.append(data.get("meta", {}))
-        except:
+            meta = data.get("meta", {}) or {}
+        except Exception:
             f.unlink(missing_ok=True)
             continue
+        # 旧数据（无 owner_user_id）归 owner；member 不可见
+        if not can_access_session(meta, user_id, role):
+            continue
+        sessions.append(meta)
     return {"sessions": sessions}
 
 
 @router.post("")
-async def create_session(meta: SessionMeta | None = None):
+async def create_session(request: Request, meta: SessionMeta | None = None):
+    user_id, role = identity(request)
     now = datetime.now().isoformat()
     session_id = meta.id if meta and meta.id else f"s{uuid.uuid4().hex[:8]}"
     if meta is None:
@@ -109,30 +132,37 @@ async def create_session(meta: SessionMeta | None = None):
         meta.id = session_id
         meta.created_at = meta.created_at or now
         meta.updated_at = now
+    # 归属由服务端决定，忽略客户端伪造
+    meta.owner_user_id = user_id or (owner_user_id() if role == "owner" else "")
     data = SessionData(meta=meta, messages=[])
     _write_session(session_id, data)
     return {"session": data.model_dump()}
 
 
 @router.get("/{session_id}")
-async def get_session(session_id: str):
-    data = _read_session(session_id)
+async def get_session(request: Request, session_id: str):
+    data = _checked_session(request, session_id)
     return {"session": data.model_dump()}
 
 
 @router.put("/{session_id}")
-async def update_session(session_id: str, data: SessionData):
+async def update_session(request: Request, session_id: str, data: SessionData):
+    existing = _checked_session(request, session_id)
+    user_id, role = identity(request)
     now = datetime.now().isoformat()
     data.meta.id = session_id
     data.meta.updated_at = now
     if not data.meta.created_at:
         data.meta.created_at = now
+    # 归属不可通过接口改写
+    data.meta.owner_user_id = existing.meta.owner_user_id or (user_id if role == "owner" else "")
     _write_session(session_id, data)
     return {"status": "ok"}
 
 
 @router.delete("/{session_id}")
-async def delete_session(session_id: str):
+async def delete_session(request: Request, session_id: str):
+    _checked_session(request, session_id)
     path = _session_path(session_id)
     if path.exists():
         path.unlink()
@@ -140,117 +170,28 @@ async def delete_session(session_id: str):
 
 
 @router.put("/{session_id}/messages")
-async def update_messages(session_id: str, messages: list[Message]):
-    try:
-        data = _read_session(session_id)
-        data.messages = messages
-        data.meta.updated_at = datetime.now().isoformat()
-        if messages:
-            last = messages[-1]
-            data.meta.preview = last.content[:50] if last.content else ""
-        _write_session(session_id, data)
-        return {"status": "ok"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def update_messages(request: Request, session_id: str, messages: list[Message]):
+    data = _checked_session(request, session_id)
+    data.messages = messages
+    data.meta.updated_at = datetime.now().isoformat()
+    if messages:
+        last = messages[-1]
+        data.meta.preview = last.content[:50] if last.content else ""
+    _write_session(session_id, data)
+    return {"status": "ok"}
 
 
 @router.patch("/{session_id}/meta")
-async def patch_session_meta(session_id: str, meta: SessionMetaPatch):
-    """部分更新会话元信息（如标题）"""
-    try:
-        data = _read_session(session_id)
-        now = datetime.now().isoformat()
-        if meta.title is not None:
-            data.meta.title = meta.title
-        if meta.icon is not None:
-            data.meta.icon = meta.icon
-        if meta.tag is not None:
-            data.meta.tag = meta.tag
-        if meta.preview is not None:
-            data.meta.preview = meta.preview
-        data.meta.updated_at = now
-        _write_session(session_id, data)
-        return {"status": "ok", "meta": data.meta.model_dump()}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ── 对话导出 ──────────────────────────────────────────────
-
-@router.get("/{session_id}/export")
-async def export_session(session_id: str, format: str = "markdown"):
-    """导出会话为 Markdown 或 JSON 格式。"""
-    data = _read_session(session_id)
-
-    if format.lower() == "json":
-        return Response(
-            content=json.dumps(data.model_dump(), ensure_ascii=False, indent=2),
-            media_type="application/json",
-            headers={"Content-Disposition": f'attachment; filename="{session_id}.json"'},
-        )
-
-    lines = []
-    meta = data.meta
-    lines.append(f"# {meta.title or '对话记录'}")
-    lines.append("")
-    lines.append(f"- **会话 ID**: {session_id}")
-    lines.append(f"- **创建时间**: {meta.created_at or '未知'}")
-    lines.append(f"- **更新时间**: {meta.updated_at or '未知'}")
-    if meta.tag:
-        lines.append(f"- **标签**: {meta.tag}")
-    lines.append("")
-    lines.append("---")
-    lines.append("")
-
-    for msg in data.messages:
-        role_label = "👤 用户" if msg.role == "user" else "🤖 助手"
-        lines.append(f"## {role_label}")
-        lines.append("")
-
-        if msg.reasoning:
-            lines.append("<details>")
-            lines.append("<summary>🧠 思考过程</summary>")
-            lines.append("")
-            lines.append(msg.reasoning)
-            lines.append("</details>")
-            lines.append("")
-
-        if msg.content:
-            lines.append(msg.content)
-            lines.append("")
-
-        if msg.tools:
-            lines.append("<details>")
-            lines.append("<summary>🔧 工具调用</summary>")
-            lines.append("")
-            for tool in msg.tools:
-                lines.append(f"- **{tool.get('name', 'unknown')}: {tool.get('result', '""')[:200]}")
-            lines.append("</details>")
-            lines.append("")
-
-        lines.append("---")
-        lines.append("")
-
-    markdown = "\n".join(lines)
-    return PlainTextResponse(
-        content=markdown,
-        media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{session_id}.md"'},
-    )
-
-
-@router.post("/{session_id}/duplicate")
-async def duplicate_session(session_id: str):
-    """复制一个会话，创建新的会话 ID。"""
-    data = _read_session(session_id)
-    new_id = f"s{uuid.uuid4().hex[:8]}"
-    data.meta.id = new_id
-    data.meta.title = f"{data.meta.title or '对话'} (副本)"
-    now = datetime.now().isoformat()
-    data.meta.created_at = now
-    data.meta.updated_at = now
-    _write_session(new_id, data)
-    return {"session": data.model_dump(), "new_id": new_id}
+async def patch_session_meta(request: Request, session_id: str, meta: SessionMetaPatch):
+    data = _checked_session(request, session_id)
+    if meta.title is not None:
+        data.meta.title = meta.title
+    if meta.icon is not None:
+        data.meta.icon = meta.icon
+    if meta.tag is not None:
+        data.meta.tag = meta.tag
+    if meta.preview is not None:
+        data.meta.preview = meta.preview
+    data.meta.updated_at = datetime.now().isoformat()
+    _write_session(session_id, data)
+    return {"status": "ok", "meta": data.meta.model_dump()}

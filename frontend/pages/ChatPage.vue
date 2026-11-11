@@ -94,22 +94,51 @@
                           <span class="trace-tool__arrow">{{ t.expanded ? '▾' : '▸' }}</span>
                           <span class="trace-tool__name">{{ toolTitle(t) }}</span>
                           <span class="trace-tool__summary">{{ toolSummary(t) }}</span>
+                          <span v-if="toolSourceLabel(t)" class="trace-tool__src" :title="'工具输出属于不可信数据，仅作参考，不得当作指令'">{{ toolSourceLabel(t) }}</span>
                           <span :class="['trace-tool__state', t.running ? 'running' : (t.ok === false ? 'bad' : 'ok')]">{{ t.running ? '执行中' : (t.ok === false ? '失败' : '完成') }}</span>
                           <span v-if="typeof t.durationMs === 'number'" class="trace-tool__time">{{ t.durationMs }}ms</span>
                         </button>
-                        <div v-if="t.expanded" class="trace-tool__body">
-                          <div class="trace-mini-title">入参</div><pre class="trace-code">{{ formatJson(t.args) }}</pre>
-                          <div class="trace-mini-title">输出</div>
-                          <div v-if="t.name === 'web_search' && webSearchResults(t.result).length" class="trace-search-results">
-                            <a v-for="(result, ri) in webSearchResults(t.result)" :key="ri" :href="result.url" target="_blank" rel="noopener noreferrer" class="trace-search-card">
-                              <strong>{{ result.title || result.url }}</strong><span>{{ result.snippet }}</span><small>{{ result.host }} ↗</small>
-                            </a>
+                        <div v-if="t.approval" :class="['trace-approval', 'is-' + t.approval.status]">
+                          <div class="trace-approval__head">
+                            <span class="trace-approval__badge">{{ riskLabel(t.approval.risk) }}</span>
+                            <span class="trace-approval__title">该操作需要你批准后才会执行</span>
+                            <span class="trace-approval__tool">{{ t.name }}</span>
                           </div>
-                          <pre v-else class="trace-code">{{ t.running ? '(执行中...)' : (t.result || t.error || '(空)') }}</pre>
-                          <button v-if="hasSpill(t.result || '') && !t.spillFull" class="spill-btn" @click.stop="loadSpillFull(t)">
-                            {{ t.spillLoading ? '加载中...' : '📄 查看完整结果' }}
-                          </button>
-                          <pre v-if="t.spillFull" class="trace-code spill-full">{{ t.spillFull }}</pre>
+                          <pre class="trace-approval__args">{{ approvalArgsPreview(t) }}</pre>
+                          <div v-if="t.approval.status === 'pending'" class="trace-approval__actions">
+                            <button class="trace-approval__btn primary" :disabled="t.approval.busy" @click.stop="decideApproval(t, 'approve')">{{ t.approval.busy ? '提交中…' : '批准执行' }}</button>
+                            <button v-if="t.approval.canRemember" class="trace-approval__btn" :disabled="t.approval.busy" @click.stop="decideApproval(t, 'approve', 'session')">本会话都允许</button>
+                            <button class="trace-approval__btn" :disabled="t.approval.busy" @click.stop="decideApproval(t, 'deny')">拒绝</button>
+                            <span class="trace-approval__hint">审批绑定本次参数，参数变化需重新审批</span>
+                          </div>
+                          <div v-else class="trace-approval__result">
+                            {{ t.approval.status === 'approved' ? '✅ 已批准，正在执行' : t.approval.status === 'denied' ? '⛔ 已拒绝，未执行' : '⏰ 审批已超时，未执行' }}
+                            <span v-if="t.approval.error" class="trace-approval__err">{{ t.approval.error }}</span>
+                          </div>
+                        </div>
+                        <div v-if="t.expanded" class="trace-tool__body">
+                          <div class="trace-panel trace-panel--in">
+                            <div class="trace-panel__hd">
+                              <span class="trace-panel__dot"></span>入参<em>INPUT</em>
+                            </div>
+                            <pre class="trace-code" v-html="formatJsonHtml(t.args)"></pre>
+                          </div>
+                          <div class="trace-panel trace-panel--out">
+                            <div class="trace-panel__hd">
+                              <span class="trace-panel__dot"></span>输出<em>OUTPUT</em>
+                              <span v-if="t.truncated" class="trace-panel__tag">已截断</span>
+                            </div>
+                            <div v-if="t.name === 'web_search' && webSearchResults(t.result).length" class="trace-search-results">
+                              <a v-for="(result, ri) in webSearchResults(t.result)" :key="ri" :href="result.url" target="_blank" rel="noopener noreferrer" class="trace-search-card">
+                                <strong>{{ result.title || result.url }}</strong><span>{{ result.snippet }}</span><small>{{ result.host }} ↗</small>
+                              </a>
+                            </div>
+                            <pre v-else class="trace-code" v-html="outputHtml(t)"></pre>
+                            <button v-if="hasSpill(t.result || '') && !t.spillFull" class="spill-btn" @click.stop="loadSpillFull(t)">
+                              {{ t.spillLoading ? '加载中...' : '📄 查看完整结果' }}
+                            </button>
+                            <pre v-if="t.spillFull" class="trace-code spill-full">{{ t.spillFull }}</pre>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -128,13 +157,18 @@
               </template>
             </template>
             <div v-else class="msg__bubble">
-              <div class="msg__text" v-html="renderMarkdownCached({ id: m.id, content: m.content } as any)"></div>
+              <div v-if="m.images && m.images.length" class="msg__images">
+                <a v-for="(img, ii) in m.images" :key="ii" :href="mediaUrl(img)" target="_blank" rel="noopener">
+                  <img :src="mediaUrl(img)" alt="用户图片" loading="lazy" />
+                </a>
+              </div>
+              <div v-if="m.content" class="msg__text" v-html="renderMarkdownCached({ id: m.id, content: m.content } as any)"></div>
               <span v-if="m.streaming" class="msg__cursor"></span>
             </div>
             <div v-if="!m.streaming" class="msg__actions">
               <button class="msg__act" @click="copyMsg(m, $event)" title="复制">📋</button>
               <button class="msg__act" @click="deleteMsg(m)" title="删除此后所有消息">🗑️</button>
-              <button v-if="m.role === 'ai'" class="msg__act" @click="speakMsg(m)" title="朗读">🔊</button><button v-if="m.role === 'ai'" class="msg__act" @click="retryMsg(m)" title="重试">🔄</button>
+              <button v-if="m.role === 'ai'" class="msg__act" @click="speakMsg(m)" :title="ttsMsgId === m.id ? (ttsPaused ? '继续朗读' : '暂停朗读') : '朗读'">{{ ttsMsgId === m.id ? (ttsPaused ? '▶️' : '⏸️') : '🔊' }}</button><button v-if="m.role === 'ai'" class="msg__act" @click="retryMsg(m)" title="重试">🔄</button>
               <button v-if="m.role === 'user'" class="msg__act" @click="editMsg(m)" title="编辑">✏️</button>
             </div>
             <div v-if="!m.streaming && (m.usage || m.createdAt || m.finishedAt)" class="msg__meta">
@@ -156,11 +190,21 @@
       </template>
     </div>
 
+    <div v-if="ttsMsgId" class="tts-bar">
+      <span class="tts-bar__icon">🔊</span>
+      <span class="tts-bar__text">{{ ttsPaused ? '朗读已暂停' : '正在朗读' }}</span>
+      <div class="tts-bar__actions">
+        <button class="tts-bar__btn" @click="toggleTts">{{ ttsPaused ? '继续' : '暂停' }}</button>
+        <button class="tts-bar__btn tts-bar__btn--ghost" @click="stopTts">停止</button>
+      </div>
+    </div>
+
     <div class="chat-input-wrap">
       <div v-if="attachments.length" class="chat-files">
-        <div v-for="(f, i) in attachments" :key="i" class="chat-file">
-          <span>{{ f.name }}</span>
-          <button class="chat-file__rm" @click="attachments.splice(i, 1)">✕</button>
+        <div v-for="(f, i) in attachments" :key="i" :class="['chat-file', f.kind === 'image' ? 'chat-file--img' : '']">
+          <img v-if="f.preview" :src="f.preview" class="chat-file__thumb" alt="" />
+          <span class="chat-file__name">{{ f.name }}</span>
+          <button class="chat-file__rm" @click="removeAttachment(i)">✕</button>
         </div>
       </div>
       <div class="chat-input-area">
@@ -171,7 +215,7 @@
         <div class="chat-input-row">
           <button v-if="!loading && !isRecording" class="chat-voice" @click="startVoice" title="语音输入">🎤</button>
           <button v-if="!loading" class="chat-file-btn" @click="fileInputRef?.click()" title="上传文件">📎</button>
-          <input ref="fileInputRef" type="file" style="display:none" accept=".txt,.md,.pdf,.py,.js,.ts,.vue,.json,.yaml,.yml,.csv,.html,.css" @change="handleFileSelect" />
+          <input ref="fileInputRef" type="file" style="display:none" accept="image/*,.txt,.md,.pdf,.py,.js,.ts,.vue,.json,.yaml,.yml,.csv,.html,.css" @change="handleFileSelect" />
           <button v-if="isRecording" class="chat-voice recording" @click="stopVoice" title="停止录音">🔴</button>
           <textarea ref="inputRef" v-model="input" class="chat-input" placeholder="输入消息... / 斜杠命令 / 粘贴图片" rows="1" @keydown="handleKey" @input="autoSize" @paste="handlePaste" />
           <button v-if="!loading" :class="['chat-send', { disabled: !input.trim() && !attachments.length }]" @click="handleSend()"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9Z"/></svg></button>
@@ -181,7 +225,21 @@
       <div class="chat-hints">
         <span class="chat-hint">{{ isMobile ? '移动端 Enter 换行 · 🚀 发送' : 'Enter 发送 · Shift+Enter 换行' }}</span>
         <span class="chat-hint" v-if="currentModel">模型：{{ currentModel }}</span>
+        <span v-if="visionHint" class="chat-hint err">{{ visionHint }}</span>
         <span v-if="apiError" class="chat-hint err">{{ apiError }}</span>
+      </div>
+      <div v-if="voiceError" class="voice-alert">
+        <span class="voice-alert__icon">🎤</span>
+        <div class="voice-alert__body">
+          <div class="voice-alert__title">{{ voiceError }}</div>
+          <ul v-if="voiceHelp.length" class="voice-alert__help">
+            <li v-for="(line, i) in voiceHelp" :key="i">{{ line }}</li>
+          </ul>
+        </div>
+        <div class="voice-alert__actions">
+          <button class="voice-alert__retry" @click="startVoice">重试</button>
+          <button class="voice-alert__close" title="关闭" @click="voiceError = ''; voiceHelp = []">×</button>
+        </div>
       </div>
     </div>
   </div>
@@ -199,7 +257,8 @@ interface ChatMedia { kind: 'aios.image'; media_id: string; url: string; name?: 
 interface ChatSegment { id: string; type: 'reasoning' | 'tool' | 'text' | 'media'; content?: string; tools?: TraceTool[]; media?: ChatMedia; expanded?: boolean; active?: boolean; userToggled?: boolean; renderedParts?: string[]; pending?: string; startedAt?: number; durationMs?: number; noFade?: boolean }
 type Role = 'user' | 'ai'
 interface ToolCall { name: string; args: any; result?: string; running?: boolean; spillFull?: string; spillLoading?: boolean }
-interface TraceTool { id?: string; round?: number; name: string; args?: any; result?: string; ok?: boolean; error?: string; durationMs?: number; expanded?: boolean; running?: boolean; userToggled?: boolean; spillFull?: string; spillLoading?: boolean }
+interface TraceApproval { id: string; status: 'pending' | 'approved' | 'denied' | 'expired'; risk?: string; expiresAt?: string; tool?: string; args?: any; busy?: boolean; error?: string; canRemember?: boolean }
+interface TraceTool { id?: string; round?: number; name: string; args?: any; result?: string; ok?: boolean; error?: string; durationMs?: number; expanded?: boolean; running?: boolean; userToggled?: boolean; spillFull?: string; spillLoading?: boolean; truncated?: boolean; sandbox?: string; approval?: TraceApproval }
 interface Message {
   id: string; role: Role; content: string; streaming?: boolean
   branches?: string[]; branchIdx?: number; toolCall?: ToolCall; toolExpanded?: boolean
@@ -226,7 +285,17 @@ const abortRef = ref<AbortController | null>(null)
 const streamIntervalRef = ref<number | null>(null)
 const apiError = ref('')
 const editingMsg = ref<Message | null>(null)
-const attachments = ref<{ name: string; data: any }[]>([])
+interface PendingAttachment { name: string; data: any; preview?: string; kind?: 'image' | 'file' }
+const attachments = ref<PendingAttachment[]>([])
+const imageDataCache = new Map<string, string>()
+const visionHint = computed(() => {
+  if (!attachments.value.some(a => a.kind === 'image')) return ''
+  const model = String(currentModel?.value || '')
+  if (!model) return ''
+  return /deepseek|qwq|text-only/i.test(model)
+    ? '⚠️ 当前模型 ' + model + ' 看不了图，请先切到支持视觉的模型（如 gpt-5.5 / gpt-5.4）'
+    : ''
+})
 const isRecording = ref(false)
 const recognitionRef = ref<any>(null)
 const inputRef = ref<HTMLTextAreaElement>()
@@ -376,10 +445,26 @@ function reloadMessages() {
   titleUpdated.value = allMsgs.value.some(m => m.role === 'user' && !!m.content)
   afterRender()
 }
-watch(sessionId, () => { reloadMessages(); loadDisplayLimit() }, { immediate: true })
-watch(displayLimit, () => { if (shouldScrollAfterLimitChange.value) { shouldScrollAfterLimitChange.value = false; afterRender() } })
-
 let autoScrollFrozenUntil = 0
+
+watch(sessionId, () => {
+  // 切换会话：清除冻结状态，先归零再回到底部，避免沿用上一个会话的滚动位置
+  autoScrollFrozenUntil = 0
+  reloadMessages()
+  loadDisplayLimit()
+  const el = msgBox.value
+  if (el) el.scrollTop = 0
+  nextTick(() => {
+    const box = msgBox.value
+    if (!box) return
+    box.scrollTop = box.scrollHeight
+    requestAnimationFrame(() => {
+      const b2 = msgBox.value
+      if (b2) b2.scrollTop = b2.scrollHeight
+    })
+  })
+}, { immediate: true })
+watch(displayLimit, () => { if (shouldScrollAfterLimitChange.value) { shouldScrollAfterLimitChange.value = false; afterRender() } })
 function freezeAutoScroll(ms = 3000) { autoScrollFrozenUntil = Date.now() + ms }
 function canAutoScroll() { return Date.now() > autoScrollFrozenUntil }
 function isNearBottom(el?: HTMLElement) {
@@ -398,7 +483,7 @@ function sync() {
   setMessages?.(copy)
 }
 
-// --- frontend stream debug ---
+// --- frontend stream debug ---  ｜ --- 前端流调试 ---
 let _dbgSeq = 0; let _dbgBuf: any[] = []
 function _dbg(tag: string, extra?: any) {
   const ts = performance.now().toFixed(1); _dbgSeq++
@@ -458,6 +543,90 @@ function afterRender() { nextTick(() => { scrollDown(); renderMermaidDiagrams(ms
 function traceHasContent(m: Message) { return !!((m.reasoning && m.reasoning.trim()) || (m.tools && m.tools.length)) }
 function toggleTrace(m: Message) { freezeAutoScroll(); m.traceExpanded = !m.traceExpanded; sync() }
 function toggleReasoning(m: Message) { freezeAutoScroll(); m.reasoningExpanded = !m.reasoningExpanded; sync() }
+function _escHtml(s: string) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function highlightJsonText(text: string) {
+  return _escHtml(text).replace(
+    /("(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*")(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g,
+    (m, str, colon, bool) => {
+      if (str) return `<span class="j-${colon ? 'key' : 'str'}">${str}</span>${colon || ''}`
+      if (bool) return `<span class="j-bool">${m}</span>`
+      return `<span class="j-num">${m}</span>`
+    },
+  )
+}
+
+function formatJsonHtml(value: any) {
+  let text: string
+  try {
+    text = typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? String(value)
+  } catch {
+    text = String(value)
+  }
+  const trimmed = text.trim()
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try { text = JSON.stringify(JSON.parse(trimmed), null, 2) } catch { /* 保持原文 */ }
+  }
+  return highlightJsonText(text)
+}
+
+function outputHtml(t: TraceTool) {
+  if (t.running) return '<span class="j-dim">(执行中...)</span>'
+  const raw = String(t.result || t.error || '(空)')
+  const trimmed = raw.trim()
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try { return highlightJsonText(JSON.stringify(JSON.parse(trimmed), null, 2)) } catch { /* 非 JSON，按纯文本显示 */ }
+  }
+  return _escHtml(raw)
+}
+
+function toolSourceLabel(t: TraceTool) {
+  const name = t.name || ''
+  if (['web_search', 'browser_open', 'file_read', 'list_dir', 'file_info'].includes(name)) return '外部数据'
+  if (['shell_exec', 'python_exec'].includes(name)) return '工具输出'
+  if (name === 'read_skill') return '技能'
+  if (name === 'send_image' || name === 'restore_image') return '媒体'
+  return ''
+}
+
+function riskLabel(risk?: string) {
+  return risk === 'high' ? '高风险' : risk === 'medium' ? '中风险' : '低风险'
+}
+
+function approvalArgsPreview(t: TraceTool) {
+  try {
+    const text = JSON.stringify(t.approval?.args ?? t.args ?? {}, null, 2)
+    return text.length > 900 ? text.slice(0, 900) + '\n…' : text
+  } catch {
+    return String(t.approval?.args ?? t.args ?? '')
+  }
+}
+
+async function decideApproval(t: TraceTool, decision: 'approve' | 'deny', remember?: 'session') {
+  const ap = t.approval
+  if (!ap || ap.status !== 'pending' || ap.busy) return
+  ap.busy = true
+  try {
+    const resp = await fetch(`/api/v1/approvals/${ap.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision, remember: remember || undefined }),
+    })
+    const data = await resp.json().catch(() => ({} as any))
+    if (!resp.ok) throw new Error((data as any)?.detail || `HTTP ${resp.status}`)
+    const status = (data as any)?.approval?.status
+    ap.status = status === 'approved' ? 'approved' : status === 'denied' ? 'denied' : (status || 'expired')
+  } catch (e: any) {
+    ap.error = e?.message || String(e)
+  } finally {
+    ap.busy = false
+    try { sync() } catch { /* ignore */
+    /* 中文：忽略 */ }
+  }
+}
+
 function toggleTools(m: Message) { freezeAutoScroll(); m.toolsExpanded = !m.toolsExpanded; sync() }
 function scrollToSegment(seg: ChatSegment) {
   nextTick(() => {
@@ -546,11 +715,63 @@ function formatJson(value: any) { try { return typeof value === 'string' ? value
 async function loadDisplayLimit() { try { const resp = await fetch(`${API}/api/v1/settings`); if (resp.ok) { const settings = await resp.json(); if (typeof settings.displayLimit === 'number' && settings.displayLimit >= 0) { shouldScrollAfterLimitChange.value = true; displayLimit.value = settings.displayLimit } } } catch { /* 静默 */ } }
 function loadMore() { shouldScrollAfterLimitChange.value = false; displayLimit.value += 20 }
 function handleKey(e: KeyboardEvent) { if (e.key === 'Escape' && editingMsg.value) { cancelEdit(); return }; if (e.key !== 'Enter') return; if (window.innerWidth < 768 || e.shiftKey) return; e.preventDefault(); handleSend() }
-function startVoice() {
+const voiceError = ref('')
+const voiceHelp = ref<string[]>([])
+
+function setVoiceIssue(title: string, help: string[] = []) {
+  voiceError.value = title
+  voiceHelp.value = help
+}
+
+const MIC_PERMISSION_HELP = [
+  '点击地址栏左侧的锁形/站点图标 → 网站设置 → 麦克风 → 允许',
+  '如果之前点过「阻止」，需要在这里改回「允许」并刷新页面',
+  '手机端还需在系统设置里允许浏览器使用麦克风',
+  '提示：免费 trycloudflare 隧道域名变化后会重新询问权限',
+]
+
+async function requestMicPermission(): Promise<boolean> {
+  voiceError.value = ''
+  voiceHelp.value = []
+  if (!window.isSecureContext) {
+    setVoiceIssue('麦克风需要 HTTPS 安全上下文', [
+      '请用 https:// 地址访问（例如隧道 https 链接）',
+      '本机 http://localhost 或 127.0.0.1 也算安全上下文',
+    ])
+    return false
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setVoiceIssue('当前浏览器不支持麦克风采集', ['请使用最新版 Chrome / Edge / Safari'])
+    return false
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    stream.getTracks().forEach((track) => track.stop())
+    return true
+  } catch (err: any) {
+    const name = err?.name || ''
+    if (name === 'NotAllowedError' || name === 'SecurityError') {
+      setVoiceIssue('麦克风权限被浏览器拒绝', MIC_PERMISSION_HELP)
+    } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      setVoiceIssue('没有检测到麦克风设备', ['检查系统是否连接并启用了麦克风设备'])
+    } else if (name === 'NotReadableError') {
+      setVoiceIssue('麦克风被其他应用占用', ['关闭正在使用麦克风的应用后重试'])
+    } else {
+      setVoiceIssue(`无法访问麦克风：${err?.message || name || '未知错误'}`)
+    }
+    return false
+  }
+}
+
+async function startVoice() {
   if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-    alert('浏览器不支持语音识别，请使用 Chrome/Edge')
+    setVoiceIssue('当前浏览器不支持语音识别（Web Speech API）', [
+      '请使用 Chrome / Edge',
+      'iOS Safari 可改用键盘自带的系统听写（麦克风键）',
+    ])
     return
   }
+  if (!(await requestMicPermission())) return
   const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
   const recognition = new SpeechRecognition()
   recognition.lang = 'zh-CN'
@@ -570,7 +791,25 @@ function startVoice() {
     else if (interim) input.value = (input.value || '').replace(/\[录音中.*?\]$/, '') + ' [录音中' + interim + ']'
     autoSize()
   }
-  recognition.onerror = (e: any) => { console.error('voice error', e); isRecording.value = false }
+  recognition.onerror = (e: any) => {
+    console.error('voice error', e)
+    isRecording.value = false
+    const code = e?.error || ''
+    if (code === 'not-allowed' || code === 'service-not-allowed') {
+      setVoiceIssue('语音识别被拒绝（麦克风或语音服务权限）', MIC_PERMISSION_HELP)
+    } else if (code === 'network') {
+      setVoiceIssue('语音识别服务不可达', [
+        'Web Speech 需要能访问浏览器的语音服务；检查代理/网络后重试',
+        '也可以先在输入框打字，或换一个网络环境',
+      ])
+    } else if (code === 'no-speech') {
+      setVoiceIssue('没有听到语音', ['靠近麦克风，再清楚地说一次'])
+    } else if (code === 'audio-capture') {
+      setVoiceIssue('麦克风采集失败', ['检查麦克风是否被其他应用占用'])
+    } else if (code !== 'aborted') {
+      setVoiceIssue(`语音识别失败：${code || '未知错误'}`)
+    }
+  }
   recognition.start()
 }
 function stopVoice() {
@@ -587,6 +826,12 @@ async function handleFileSelect(e: Event) {
   
   const maxSize = 5 * 1024 * 1024
   if (file.size > maxSize) { alert('文件超过 5MB 限制'); return }
+
+  // 图片走多模态附件通道（粘贴/相册选择），不再当纯文本文件解码
+  if (file.type.startsWith('image/')) {
+    attachments.value.push({ name: file.name || '图片', data: file, kind: 'image', preview: URL.createObjectURL(file) })
+    return
+  }
   
   const form = new FormData()
   form.append('file', file)
@@ -605,26 +850,74 @@ async function handleFileSelect(e: Event) {
   }
 }
 
-function handlePaste(e: ClipboardEvent) { const items = e.clipboardData?.items; if (!items) return; for (let i = 0; i < items.length; i++) { if (items[i].type.startsWith('image/')) { const f = items[i].getAsFile(); if (f) attachments.value.push({ name: f.name || '图片', data: f }) } } }
+function handlePaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items
+  if (!items) return
+  let got = false
+  for (let i = 0; i < items.length; i++) {
+    if (!items[i].type.startsWith('image/')) continue
+    const f = items[i].getAsFile()
+    if (!f) continue
+    attachments.value.push({ name: f.name || '粘贴的图片', data: f, kind: 'image', preview: URL.createObjectURL(f) })
+    got = true
+  }
+  if (got) e.preventDefault()
+}
+function removeAttachment(i: number) {
+  const item = attachments.value[i]
+  if (item?.preview) { try { URL.revokeObjectURL(item.preview) } catch { /* ignore */
+  /* 中文：忽略 */ } }
+  attachments.value.splice(i, 1)
+}
+function clearAttachments() {
+  for (const item of attachments.value) {
+    if (item.preview) { try { URL.revokeObjectURL(item.preview) } catch { /* ignore */
+    /* 中文：忽略 */ } }
+  }
+  attachments.value = []
+}
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error || new Error('读取图片失败'))
+    reader.readAsDataURL(blob)
+  })
+}
+async function resolveImageData(url: string): Promise<string | null> {
+  if (!url) return null
+  if (url.startsWith('data:')) return url
+  const cached = imageDataCache.get(url)
+  if (cached) return cached
+  try {
+    const resp = await fetch(mediaUrl(url))
+    if (!resp.ok) return null
+    const dataUrl = await blobToDataUrl(await resp.blob())
+    imageDataCache.set(url, dataUrl)
+    return dataUrl
+  } catch (e) { console.error('resolve image failed', url, e); return null }
+}
 function autoSize() { nextTick(() => { const el = inputRef.value; if (!el) return; el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 120)}px` }) }
 function stopGen() { if (abortRef.value) { abortRef.value.abort(); abortRef.value = null }; if (streamIntervalRef.value !== null) { clearInterval(streamIntervalRef.value); streamIntervalRef.value = null }; const streamingMsg = allMsgs.value.find(m => m.streaming); if (streamingMsg) streamingMsg.streaming = false; loading.value = false; flushSync(); afterRender() }
 
-async function uploadAttachments(): Promise<string[]> {
-  const urls: string[] = []
-  for (const att of attachments.value) {
+async function uploadAttachments(files: PendingAttachment[]): Promise<{ url: string; data_url: string }[]> {
+  const out: { url: string; data_url: string }[] = []
+  for (const att of files) {
     if (!att.data) continue
     const form = new FormData()
     form.append('file', att.data)
     try {
       const resp = await fetch(`${API}/api/v1/media/upload`, { method: 'POST', body: form })
-      if (resp.ok) {
-        const data = await resp.json()
-        if (data.url) urls.push(data.url)
-      }
+      if (!resp.ok) throw new Error(`上传失败 HTTP ${resp.status}`)
+      const data = await resp.json()
+      const url = String(data.url || '')
+      const dataUrl = String(data.data_url || '')
+      if (!url) continue
+      out.push({ url, data_url: dataUrl || url })
+      if (dataUrl) imageDataCache.set(url, dataUrl)
     } catch (e) { console.error('upload failed', e) }
   }
-  attachments.value = []
-  return urls
+  return out
 }
 
 async function buildRequestContext(untilIdx?: number) {
@@ -638,28 +931,20 @@ async function buildRequestContext(untilIdx?: number) {
   const history: { role: string; content: string | any[] }[] = []
   if (Array.isArray(settings.prompts)) { const def = settings.prompts.find((p: any) => p.isDefault); if (def?.content) history.push({ role: 'system', content: def.content }) }
   const source = typeof untilIdx === 'number' ? allMsgs.value.slice(0, untilIdx + 1) : allMsgs.value
-  const imageUrls = await uploadAttachments()
   for (const m of source) {
-    if (!m.role || !m.content || m.streaming || m.toolCall) continue
+    const hasImages = !!(m.images && m.images.length)
+    if (!m.role || (!m.content && !hasImages) || m.streaming || m.toolCall) continue
     const role = m.role === 'ai' ? 'assistant' : 'user'
-    if (m.images && m.images.length > 0) {
-      const parts: any[] = [{ type: 'text', text: m.content }]
-      for (const img of m.images) {
-        parts.push({ type: 'image_url', image_url: { url: img, detail: 'auto' } })
+    if (hasImages && role === 'user') {
+      const parts: any[] = [{ type: 'text', text: m.content || '' }]
+      for (const img of m.images as string[]) {
+        const dataUrl = await resolveImageData(img)
+        if (dataUrl) parts.push({ type: 'image_url', image_url: { url: dataUrl, detail: 'auto' } })
       }
       history.push({ role, content: parts })
     } else {
       history.push({ role, content: m.content })
     }
-  }
-  const lastUserIdx = history.map((h, i) => h.role === 'user' ? i : -1).filter(i => i >= 0).pop()
-  if (lastUserIdx !== undefined && imageUrls.length > 0) {
-    const text = typeof history[lastUserIdx].content === 'string' ? history[lastUserIdx].content : ''
-    const parts: any[] = [{ type: 'text', text }]
-    for (const url of imageUrls) {
-      parts.push({ type: 'image_url', image_url: { url, detail: 'auto' } })
-    }
-    history[lastUserIdx] = { role: 'user', content: parts }
   }
   return {
     settings,
@@ -670,6 +955,7 @@ async function buildRequestContext(untilIdx?: number) {
       apiKey: provider?.key || '',
       temperature: settings.params?.temperature ?? 0.7,
       maxTokens: settings.params?.maxTokens || 4096,
+      sessionId: sessionId?.value || null,
     },
   }
 }
@@ -835,6 +1121,13 @@ async function requestAi(aiMsg: Message, untilIdx?: number) {
         if (!m) { loading.value = false; return }
 
         switch (event.type) {
+          case 'error': {
+            const msg = String(event.message || '模型请求失败')
+            apiError.value = msg
+            m.content = (m.content ? m.content + '\n\n' : '') + '❌ **请求失败**\n\n```\n' + msg + '\n```'
+            m.streaming = false
+            break
+          }
           case 'reasoning': {
             if (currentToolSeg) { currentToolSeg.active = false; currentToolSeg = null }
             if (!currentReasoningSeg) {
@@ -857,12 +1150,41 @@ async function requestAi(aiMsg: Message, untilIdx?: number) {
             scrollDown()
             break
           }
+          case 'approval_required': {
+            const seg = ensureToolSeg(m)
+            const toolId = event.tool_call_id || `tool-apv-${Date.now()}`
+            const approval: TraceApproval = {
+              id: event.approval_id, status: 'pending', risk: event.risk || 'medium',
+              expiresAt: event.expires_at, tool: event.tool, args: event.args,
+              canRemember: !!event.canRememberSession,
+            }
+            const existing = (seg.tools || []).find(t => t.id === toolId)
+            if (existing) {
+              existing.approval = approval
+              existing.running = true
+            } else {
+              const entry: TraceTool = { id: toolId, round: event.round, name: event.tool || '工具调用', args: event.args, running: true, expanded: true, approval }
+              seg.tools = [...(seg.tools || []), entry]
+              m.tools = [...(m.tools || []), entry]
+            }
+            scrollDown()
+            break
+          }
           case 'tool_call_start': {
             const seg = ensureToolSeg(m)
             const toolId = event.id || `tool-${seg.tools?.length || 0}`
-            const runningTool: TraceTool = { id: toolId, round: event.round, name: event.name, args: event.args, running: true, expanded: false }
-            seg.tools = [...(seg.tools || []), runningTool]
-            m.tools = [...(m.tools || []), runningTool]
+            const existing = (seg.tools || []).find(t => t.id === toolId)
+            if (existing) {
+              existing.name = event.name
+              existing.args = event.args
+              existing.running = true
+              const flat = (m.tools || []).find(t => t.id === toolId)
+              if (flat) { flat.name = event.name; flat.args = event.args; flat.running = true }
+            } else {
+              const runningTool: TraceTool = { id: toolId, round: event.round, name: event.name, args: event.args, running: true, expanded: false }
+              seg.tools = [...(seg.tools || []), runningTool]
+              m.tools = [...(m.tools || []), runningTool]
+            }
             scrollDown()
             break
           }
@@ -875,6 +1197,7 @@ async function requestAi(aiMsg: Message, untilIdx?: number) {
               result: event.result, ok: event.ok, error: event.error, durationMs: event.durationMs,
               expanded: prevTool?.userToggled ? !!prevTool.expanded : event.ok === false,
               running: false, userToggled: prevTool?.userToggled,
+              approval: prevTool?.approval,
             }
             const idx = (seg.tools || []).findIndex(t => t.id === toolId)
             if (idx >= 0) seg.tools!.splice(idx, 1, toolEntry)
@@ -985,13 +1308,23 @@ function autoGenTitle(text: string): string {
 async function handleSend(text?: string) {
   loadDisplayLimit()
   const msg = (text ?? input.value).trim()
-  if (!msg || loading.value) return
+  const pending = attachments.value.slice()
+  if ((!msg && pending.length === 0) || loading.value) return
   input.value = ''; autoSize(); apiError.value = ''
-  if (msg.startsWith('/')) { handleSlashCommand(msg); return }
+  if (msg.startsWith('/')) { clearAttachments(); handleSlashCommand(msg); return }
+  let imageRefs: string[] = []
+  if (pending.length) {
+    loading.value = true
+    try { imageRefs = (await uploadAttachments(pending)).map(u => u.url) } finally { loading.value = false }
+    clearAttachments()
+    if (!imageRefs.length && !msg) { apiError.value = '图片上传失败，请重试'; return }
+  }
   if (editingMsg.value) { const editIdx = allMsgs.value.findIndex(m => m.id === editingMsg.value?.id); if (editIdx >= 0) allMsgs.value.splice(editIdx); editingMsg.value = null }
   const lastMsg = allMsgs.value[allMsgs.value.length - 1]
   const isFirstUserMsg = !allMsgs.value.some(m => m.role === 'user' && m.content)
-  if (!lastMsg || !(lastMsg.role === 'user' && lastMsg.content === msg)) { allMsgs.value.push({ id: Date.now().toString(), role: 'user', content: msg }); sync() }
+  const userMsg: Message = { id: Date.now().toString(), role: 'user', content: msg }
+  if (imageRefs.length) userMsg.images = imageRefs
+  if (!lastMsg || !(lastMsg.role === 'user' && lastMsg.content === msg && !imageRefs.length)) { allMsgs.value.push(userMsg); sync() }
   // 自动生成会话标题：标题仍为默认"新对话"时自动生成（首条消息用当前，旧会话用第一条用户消息）
   if (isFirstUserMsg || !getSessionTitle()) {
     const firstUser = allMsgs.value.find(m => m.role === 'user' && !!m.content)
@@ -1027,14 +1360,151 @@ async function retryMsg(m: Message) {
   }
 }
 
-async function speakMsg(m: Message) {
-  if (!('speechSynthesis' in window)) return
-  window.speechSynthesis.cancel()
-  const utter = new SpeechSynthesisUtterance(m.content.replace(/[#*`\[\]\(\)]/g, '').replace(/\!\[.*?\]\(.*?\)/g, '').replace(/\[.*?\]\(.*?\)/g, '$1'))
+/* ---------------- 语音朗读（TTS） ---------------- */
+const ttsMsgId = ref('')
+const ttsPaused = ref(false)
+const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window
+let ttsUtter: SpeechSynthesisUtterance | null = null
+let ttsAudio: HTMLAudioElement | null = null
+let ttsAudioUrl = ''
+let ttsParts: string[] = []
+let ttsIndex = 0
+
+function _ttsConfig() {
+  let source = 'system', voice = '', rate = 1, pitch = 1
+  let endpoint = '', key = '', model = '', voiceId = '', ref = '', useRef = false, instruction = ''
+  try {
+    source = localStorage.getItem('hhs-tts-source') || 'system'
+    voice = localStorage.getItem('hhs-tts-voice') || ''
+    rate = Number(localStorage.getItem('hhs-tts-rate') || '1') || 1
+    pitch = Number(localStorage.getItem('hhs-tts-pitch') || '1') || 1
+    endpoint = localStorage.getItem('hhs-tts-endpoint') || ''
+    key = localStorage.getItem('hhs-tts-key') || ''
+    model = localStorage.getItem('hhs-tts-model') || ''
+    voiceId = localStorage.getItem('hhs-tts-voice-id') || ''
+    ref = localStorage.getItem('hhs-tts-ref') || ''
+    useRef = localStorage.getItem('hhs-tts-use-ref') === '1'
+    instruction = localStorage.getItem('hhs-tts-instruction') || ''
+  } catch { /* ignore */ }
+  return { source, apiType: localStorage.getItem('hhs-tts-api-type') || 'openai', voice, rate: Math.min(2, Math.max(0.5, rate)), pitch: Math.min(2, Math.max(0.5, pitch)), endpoint, key, model, voiceId, ref, useRef, instruction }
+}
+
+function _ttsText(content: string) {
+  return content
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/!\[.*?\]\(.*?\)/g, '')
+    .replace(/\[.*?\]\(.*?\)/g, '$1')
+    .replace(/[#*`>_~\[\]]/g, '')
+    .replace(/\n{2,}/g, '\n')
+    .trim()
+}
+
+function _ttsCleanupAudio() {
+  if (ttsAudio) { try { ttsAudio.pause() } catch { /* ignore */ } ttsAudio = null }
+  if (ttsAudioUrl) { try { URL.revokeObjectURL(ttsAudioUrl) } catch { /* ignore */ } ttsAudioUrl = '' }
+}
+
+function stopTts() {
+  if (ttsSupported) window.speechSynthesis.cancel()
+  _ttsCleanupAudio()
+  ttsMsgId.value = ''
+  ttsPaused.value = false
+  ttsUtter = null
+  ttsParts = []
+  ttsIndex = 0
+}
+
+function toggleTts() {
+  if (ttsAudio) {
+    if (ttsPaused.value) { ttsAudio.play().catch(() => {}); ttsPaused.value = false }
+    else { ttsAudio.pause(); ttsPaused.value = true }
+    return
+  }
+  if (!ttsSupported || !ttsUtter) return
+  if (ttsPaused.value) {
+    ttsPaused.value = false
+    _speakSystemNext()
+  } else {
+    ttsPaused.value = true
+    window.speechSynthesis.cancel()
+  }
+}
+
+function _speakSystemNext() {
+  if (!ttsSupported || ttsPaused.value || ttsIndex >= ttsParts.length) { if (ttsIndex >= ttsParts.length) stopTts(); return }
+  const cfg = _ttsConfig()
+  const utter = new SpeechSynthesisUtterance(ttsParts[ttsIndex])
   utter.lang = 'zh-CN'
-  utter.rate = 1.1
+  utter.rate = cfg.rate
+  utter.pitch = cfg.pitch
+  const voices = window.speechSynthesis.getVoices()
+  const selected = voices.find(v => v.voiceURI === cfg.voice || v.name === cfg.voice)
+  const zh = selected || voices.find(v => v.lang && (v.lang.toLowerCase().startsWith('zh') || v.lang.toLowerCase().includes('cn')))
+  if (zh) { utter.voice = zh; utter.lang = zh.lang || 'zh-CN' }
+  utter.onend = () => {
+    if (ttsUtter !== utter || ttsPaused.value) return
+    ttsIndex += 1
+    _speakSystemNext()
+  }
+  utter.onerror = () => { if (ttsUtter === utter) stopTts() }
+  ttsUtter = utter
   window.speechSynthesis.speak(utter)
 }
+
+function _speakSystem(m: Message, text: string) {
+  ttsParts = text.split(/(?<=[。！？!?；;\n])/).map(x => x.trim()).filter(Boolean)
+  if (!ttsParts.length) return
+  ttsIndex = 0
+  ttsMsgId.value = m.id
+  ttsPaused.value = false
+  _speakSystemNext()
+}
+
+async function _speakThirdParty(m: Message, text: string) {
+  const cfg = _ttsConfig()
+  ttsMsgId.value = m.id
+  ttsPaused.value = false
+  try {
+    if (!cfg.endpoint) throw new Error('未配置第三方 TTS 地址')
+    const r = await fetch(`${API}/api/v1/tts/synthesize`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text, endpoint: cfg.endpoint, api_key: cfg.key, model: cfg.model,
+        voice: cfg.voiceId, format: 'mp3', reference_audio: cfg.useRef ? cfg.ref : '', api_type: cfg.apiType, instruction: cfg.instruction,
+      }),
+    })
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}))
+      throw new Error(d.detail || `TTS HTTP ${r.status}`)
+    }
+    const blob = await r.blob()
+    if (ttsMsgId.value !== m.id) return
+    _ttsCleanupAudio()
+    ttsAudioUrl = URL.createObjectURL(blob)
+    ttsAudio = new Audio(ttsAudioUrl)
+    ttsAudio.onended = () => stopTts()
+    ttsAudio.onerror = () => stopTts()
+    await ttsAudio.play()
+  } catch (err: any) {
+    stopTts()
+    setVoiceIssue('语音朗读失败', [String(err?.message || err), '检查第三方 TTS 地址 / Key / 模型 / 语音 ID', '或切换到系统语音'])
+  }
+}
+
+function speakMsg(m: Message) {
+  if (ttsMsgId.value === m.id) { toggleTts(); return }
+  stopTts()
+  const text = _ttsText(m.content || '')
+  if (!text) return
+  const cfg = _ttsConfig()
+  if (cfg.source === 'thirdparty') { void _speakThirdParty(m, text); return }
+  if (!ttsSupported) {
+    setVoiceIssue('当前浏览器不支持系统语音', ['可以在设置中改用第三方 TTS 接口'])
+    return
+  }
+  _speakSystem(m, text)
+}
+
 async function copyMsg(m: Message, e: Event) { const btn = (e.target as HTMLElement).closest('button'); if (!btn) return; copyToClipboard(m.content, btn) }
 function cancelEdit() { editingMsg.value = null; input.value = ''; autoSize(); inputRef.value?.blur() }
 function editMsg(m: Message) { editingMsg.value = m; input.value = m.content; autoSize(); nextTick(() => inputRef.value?.focus()) }
@@ -1085,7 +1555,8 @@ function applyPrefill() {
       localStorage.removeItem('hhs:prefill')
       nextTick(() => { autoSize(); inputRef.value?.focus() })
     }
-  } catch { /* ignore */ }
+  } catch { /* ignore */
+  /* 中文：忽略 */ }
 }
 
 function onNewChatEvent() {
@@ -1096,16 +1567,38 @@ onMounted(() => {
   msgBox.value?.addEventListener('click', onMsgClick)
   applyPrefill()
   window.addEventListener('hhs:new-chat', onNewChatEvent)
+  nextTick(() => {
+    const box = msgBox.value
+    if (box) box.scrollTop = box.scrollHeight
+  })
 })
 onUnmounted(() => {
   msgBox.value?.removeEventListener('click', onMsgClick)
   window.removeEventListener('hhs:new-chat', onNewChatEvent)
+  stopTts()
 })
 </script>
 
 <style scoped>
 .chat-page{height:100%;display:flex;flex-direction:column;background:var(--bg);overflow:hidden}.chat-msgs{flex:1;display:flex;flex-direction:column;gap:14px;padding:16px;overflow-y:auto}.chat-empty{margin:auto;display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--text2);text-align:center}.chat-empty__icon{font-size:48px}.chat-empty__title{font-size:18px;font-weight:600;color:var(--text)}.chat-empty__hint{font-size:13px;color:var(--text2)}.chat-chips{display:flex;flex-direction:column;gap:6px;width:100%;max-width:280px;margin-top:8px}.chat-chip{padding:10px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border-light);color:var(--text);cursor:pointer;font-size:13px;text-align:left;transition:all .15s}.chat-chip:active,.chat-chip:hover{border-color:var(--primary);background:var(--surface-alt)}.chat-load-more{padding:10px 16px;text-align:center;color:var(--primary);font-size:13px;cursor:pointer;border-radius:8px;background:var(--surface);border:1px dashed var(--border-light);transition:all .15s;user-select:none}.chat-load-more:hover{background:var(--surface-alt);border-color:var(--primary)}
 .chat-input-wrap{padding:8px 8px max(8px,env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--border-light);flex-shrink:0}.chat-files{display:flex;gap:6px;flex-wrap:wrap;padding-bottom:6px}.chat-file{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;background:var(--surface);font-size:12px}.chat-file__rm{background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:14px}.chat-input-area{display:flex;flex-direction:column}.chat-edit-bar{display:flex;align-items:center;gap:8px;padding:0 4px 6px;font-size:12px}.chat-edit-hint{color:var(--warn);font-weight:500}.chat-edit-cancel{background:transparent;border:none;color:var(--text3);cursor:pointer;text-decoration:underline;font-size:12px;padding:0;font-family:inherit}.chat-edit-cancel:hover{color:var(--text)}.chat-input-row{display:flex;gap:8px;align-items:flex-end}.chat-input{flex:1;padding:12px 16px;border-radius:20px;background:var(--surface);border:1px solid var(--border-light);color:var(--text);font-size:14px;font-family:inherit;resize:none;outline:none;overflow:hidden;min-height:44px;max-height:120px;line-height:1.4;transition:border .2s}.chat-input:focus{border-color:var(--primary)}
+.tts-bar{display:flex;align-items:center;gap:8px;margin:0 12px 6px;padding:7px 11px;border-radius:9px;border:1px solid color-mix(in srgb,var(--primary) 35%,var(--border-light));background:var(--primary-soft);font-size:12px;color:var(--text)}
+.tts-bar__icon{font-size:14px}
+.tts-bar__text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tts-bar__actions{display:flex;gap:6px;flex-shrink:0}
+.tts-bar__btn{height:26px;padding:0 10px;border-radius:7px;border:1px solid color-mix(in srgb,var(--primary) 45%,var(--border-light));background:var(--surface);color:var(--text);font-size:11.5px;cursor:pointer}
+.tts-bar__btn--ghost{background:transparent;color:var(--text2)}
+@media (max-width:767px){.tts-bar{margin:0 8px 6px}}
+.voice-alert{display:flex;align-items:flex-start;gap:8px;margin:6px 2px 2px;padding:9px 11px;border:1px solid color-mix(in srgb,var(--warn) 42%,var(--border-light));border-radius:10px;background:color-mix(in srgb,var(--warn) 7%,var(--surface));font-size:12px;line-height:1.5}
+.voice-alert__icon{font-size:15px;line-height:1.2;flex-shrink:0}
+.voice-alert__body{flex:1;min-width:0}
+.voice-alert__title{color:var(--text);font-weight:600}
+.voice-alert__help{margin:5px 0 0;padding-left:16px;color:var(--text2);font-size:11.5px}
+.voice-alert__help li{margin:2px 0}
+.voice-alert__actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.voice-alert__retry{padding:4px 10px;border-radius:7px;border:1px solid color-mix(in srgb,var(--primary) 45%,var(--border-light));background:var(--primary-soft);color:var(--primary);font-size:11.5px;font-weight:600;cursor:pointer}
+.voice-alert__close{padding:2px 6px;border:none;background:transparent;color:var(--text3);font-size:15px;cursor:pointer;line-height:1}
+@media (max-width:767px){.voice-alert{flex-wrap:wrap}.voice-alert__actions{margin-left:auto}}
 .chat-voice{width:36px;height:44px;border-radius:20px;border:1px solid var(--border-light);background:var(--surface);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:all .15s}.chat-voice:hover{border-color:var(--primary);background:var(--surface-alt)}.chat-voice.recording{animation:pulseRed 1s ease-in-out infinite;border-color:var(--error);background:color-mix(in srgb,var(--error) 15%,transparent)}@keyframes pulseRed{0%,100%{opacity:1}50%{opacity:.6}}
 .chat-file-btn{width:36px;height:44px;border-radius:20px;border:1px solid var(--border-light);background:var(--surface);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:all .15s}.chat-file-btn:hover{border-color:var(--primary);background:var(--surface-alt)}
 .msg{display:flex;gap:8px;max-width:90%;animation:msgIn .2s ease}@keyframes msgIn{from{opacity:0;transform:translateY(6px)}}.msg--user{align-self:flex-end;flex-direction:row-reverse}.msg--ai{align-self:flex-start}.msg__avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;background:var(--surface-alt)}.msg__body{display:flex;flex-direction:column;gap:4px;max-width:100%;min-width:0}.msg__bubble{padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.6;word-break:break-word;max-width:100%;overflow:hidden}.msg--user .msg__bubble{background:var(--primary);color:#fff;border-bottom-right-radius:4px}.msg--ai .msg__bubble{background:var(--surface);border:1px solid var(--border-light);border-bottom-left-radius:4px}.msg__text{max-width:100%;overflow-wrap:anywhere;transition:opacity .08s ease}
@@ -1183,10 +1676,24 @@ onUnmounted(() => {
   scrollbar-color: rgba(148,163,184,.35) transparent;
 }
 
-/* 聊天主滚动区 — 布局稳定 + 平滑滚动 */
+/* 聊天主滚动区 — 布局稳定 + 细滚动条（切换会话时由 JS 立即回到底部） */
 .chat-msgs {
   scrollbar-gutter: stable;
-  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text3) 35%, transparent) transparent;
+}
+.chat-msgs::-webkit-scrollbar { width: 8px; height: 8px; }
+.chat-msgs::-webkit-scrollbar-track { background: transparent; }
+.chat-msgs::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text3) 32%, transparent);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.chat-msgs::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--primary) 55%, transparent);
+  background-clip: padding-box;
 }
 
 /* 工具卡 / 表格等横向溢出容器 */
@@ -1393,4 +1900,311 @@ onUnmounted(() => {
   margin-left: auto;
   margin-right: auto;
 }
+/* AIOS-MM */
+/* 中文：AIOS-MM */.msg__images{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}.msg__images a{display:block;line-height:0;border-radius:10px;overflow:hidden;border:1px solid var(--border-light)}.msg__images img{display:block;max-width:220px;max-height:220px;width:auto;height:auto;object-fit:cover;background:var(--surface-alt)}.chat-file--img{padding:4px 8px 4px 4px}.chat-file__thumb{width:28px;height:28px;border-radius:6px;object-fit:cover;display:block}.chat-file__name{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}@media (max-width:767px){.msg__images img{max-width:min(220px,60vw);max-height:180px}.msg{max-width:96%}}
+/* ============================================================
+   Aurora Console · 对话页精修层（追加在 ChatPage scoped style 末尾）
+   ============================================================ */
+.chat-page { background: transparent; }
+.chat-msgs {
+  padding: 26px clamp(16px, 4vw, 56px) 30px;
+  gap: 18px;
+  scrollbar-gutter: stable;
+}
+.chat-msgs::-webkit-scrollbar { width: 9px; }
+
+.msg {
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  gap: 12px;
+  animation: msgIn 220ms var(--ease);
+}
+.msg--user .msg__body { margin-left: auto; align-items: flex-end; }
+.msg--ai .msg__body { margin-right: auto; }
+
+.msg__avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  font-size: 14px;
+  box-shadow: var(--shadow-sm);
+}
+.msg--ai .msg__avatar { background: color-mix(in srgb, var(--surface) 90%, transparent); }
+
+.msg__bubble {
+  padding: 13px 17px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.78;
+}
+.msg--user .msg__bubble {
+  background: var(--grad-primary);
+  color: #fff;
+  border-bottom-right-radius: 5px;
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+.msg--ai .msg__bubble {
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--border-light);
+  border-bottom-left-radius: 5px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02), var(--shadow-sm);
+}
+.msg__text { line-height: 1.78; }
+.msg__text p { margin: 0 0 9px; }
+.msg__text p:last-child { margin-bottom: 0; }
+.msg__text ul, .msg__text ol { margin: 6px 0 10px; padding-left: 20px; }
+.msg__text li { margin-bottom: 3px; }
+.msg__text h1, .msg__text h2, .msg__text h3 { margin: 14px 0 8px; line-height: 1.35; }
+.msg__text code {
+  font-size: 0.86em;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  border: 1px solid var(--border-light);
+}
+.msg--user .msg__text code { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.12); }
+
+.msg__actions { gap: 4px; margin-top: 3px; opacity: 0.45; transition: opacity var(--t-fast); }
+.msg:hover .msg__actions { opacity: 1; }
+.msg__act {
+  width: 26px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border-light);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--text3);
+  font-size: 11px;
+  transition: all var(--t-fast);
+}
+.msg__act:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-alt); }
+.msg__meta { font-family: var(--font-mono); font-size: 10px; color: var(--text3); gap: 8px; margin-top: 3px; }
+
+/* 空态 / 首屏 */
+.chat-empty { gap: 14px; padding: 40px 16px; }
+.chat-empty__icon {
+  width: 62px; height: 62px;
+  display: grid; place-items: center;
+  font-size: 28px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 18%, transparent), var(--surface));
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
+  box-shadow: 0 12px 34px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.chat-empty__title { font-size: 19px; font-weight: 720; letter-spacing: -0.02em; }
+.chat-empty__hint { font-size: 12.5px; color: var(--text3); }
+.chat-chips { gap: 8px; width: auto; max-width: 520px; margin-top: 10px; }
+.chat-chip {
+  padding: 10px 14px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  border: 1px solid var(--border-light);
+  font-size: 12.5px;
+  transition: all var(--t-fast);
+}
+.chat-chip:hover {
+  border-color: color-mix(in srgb, var(--primary) 34%, transparent);
+  background: var(--primary-soft);
+  color: var(--primary);
+  transform: translateY(-1px);
+}
+
+/* 输入区：悬浮命令台 */
+.chat-input-wrap {
+  padding: 10px clamp(14px, 4vw, 48px) 18px;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--bg) 88%, transparent) 38%);
+  border-top: 1px solid var(--border-light);
+}
+.chat-input-area { max-width: 920px; margin: 0 auto; width: 100%; }
+.chat-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 7px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), var(--shadow-md);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.chat-input-row:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 42%, transparent);
+  box-shadow: 0 0 0 3px var(--primary-soft), var(--shadow-md);
+}
+.chat-input {
+  padding: 10px 8px;
+  border: none;
+  background: transparent;
+  font-size: 13.5px;
+  line-height: 1.6;
+  min-height: 40px;
+  border-radius: 0;
+}
+.chat-input:focus { border: none; }
+.chat-voice, .chat-file-btn {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 3px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text3);
+  font-size: 15px;
+  transition: all var(--t-fast);
+}
+.chat-voice:hover, .chat-file-btn:hover {
+  color: var(--text);
+  background: var(--surface-alt);
+  border-color: var(--border-light);
+}
+.chat-send {
+  width: 36px;
+  height: 36px;
+  margin-bottom: 1px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 12px;
+  background: var(--grad-primary);
+  color: #fff;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 30%, transparent);
+  transition: transform var(--t-fast), filter var(--t-fast);
+}
+.chat-send:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.chat-send.disabled { opacity: 0.4; box-shadow: none; }
+.chat-send.stop { background: var(--surface-3); color: var(--text); box-shadow: none; }
+.chat-hints {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 8px 4px 0;
+  font-size: 10.5px;
+  color: var(--text3);
+  font-family: var(--font-mono);
+}
+.chat-hint.err { color: var(--error); font-family: var(--font-sans); }
+.chat-files { max-width: 920px; margin: 0 auto; padding-bottom: 8px; gap: 7px; }
+.chat-file {
+  padding: 5px 10px;
+  border-radius: 9px;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  font-size: 11.5px;
+  color: var(--text2);
+}
+
+/* 思考流 / 工具流 */
+.trace-box {
+  border-radius: 13px;
+  border: 1px solid var(--border-light);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  overflow: hidden;
+}
+.trace-head {
+  padding: 8px 12px;
+  font-size: 11.5px;
+  color: var(--text2);
+  background: transparent;
+}
+.trace-head:hover { background: var(--surface-alt); }
+.trace-body { padding: 8px 12px 12px; }
+.trace-code {
+  border-radius: 10px;
+  border: 1px solid var(--border-light);
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  font-size: 11.5px;
+}
+.trace-pill { font-size: 9.5px; border-radius: var(--r-full); }
+
+/* 图片气泡 */
+.msg-media { border-radius: 15px; border-color: var(--border-light); box-shadow: var(--shadow-md); }
+.msg-media img { max-height: 62vh; }
+.msg__images a { border-radius: 12px; border-color: var(--border-light); }
+.msg__images img { max-height: 190px; }
+
+/* 会话滚动到底部按钮等其它浮层 */
+.chat-load-more {
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  font-size: 11.5px;
+}
+
+@media (max-width: 767px) {
+  .chat-msgs { padding: 14px 12px 18px; gap: 13px; }
+  .msg { gap: 8px; max-width: 100%; }
+  .msg__avatar { width: 26px; height: 26px; border-radius: 9px; font-size: 12px; }
+  .msg__bubble { padding: 11px 13px; font-size: 13.5px; line-height: 1.72; border-radius: 14px; }
+  .msg__actions { opacity: 0.6; }
+  .msg__act { width: 30px; height: 28px; }
+  .chat-input-wrap { padding: 8px 10px max(12px, env(safe-area-inset-bottom)); }
+  .chat-input-row { padding: 6px; border-radius: 16px; }
+  .chat-input { min-height: 38px; font-size: 13.5px; }
+  .chat-voice, .chat-file-btn { width: 32px; height: 32px; }
+  .chat-send { width: 34px; height: 34px; border-radius: 11px; }
+  .chat-hints { display: none; }
+  .msg-media img { max-height: 46vh; }
+  .msg__images img { max-height: 150px; }
+}
+
+﻿/* ===== 移动端欢迎页紧凑布局（避免内容高于视口 + margin:auto 导致顶部被裁） ===== */
+@media (max-width: 767px) {
+  .chat-empty { margin: 0 auto !important; padding: 8px 4px 14px !important; display: block !important; }
+  .welcome { max-width: 100%; }
+  .welcome-badge { font-size: 8.5px; padding: 3px 9px; }
+  .welcome-title { margin-top: 10px; font-size: 21px; }
+  .welcome-sub { margin-top: 6px; font-size: 11.5px; line-height: 1.55; }
+  .welcome-caps { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 7px; margin-top: 12px; max-width: 100%; }
+  .cap { padding: 8px 9px; gap: 7px; border-radius: 10px; }
+  .cap-icon { font-size: 15px; }
+  .cap-text b { font-size: 11.5px; }
+  .cap-text em { display: none; }
+  .chat-chips { gap: 6px; margin-top: 12px; }
+  .chat-chip { padding: 6px 10px; font-size: 11.5px; }
+  .welcome-tip { margin-top: 10px; font-size: 9.5px; }
+  .welcome-tip kbd { display: none; }
+}
+</style>
+
+<style scoped>
+.trace-approval{margin:0 8px 8px;border:1px solid color-mix(in srgb,var(--warn) 45%,var(--border-light));border-radius:10px;background:color-mix(in srgb,var(--warn) 7%,var(--surface));padding:9px 10px;display:flex;flex-direction:column;gap:7px}
+.trace-approval.is-approved{border-color:color-mix(in srgb,var(--success) 45%,var(--border-light));background:color-mix(in srgb,var(--success) 7%,var(--surface))}
+.trace-approval.is-denied,.trace-approval.is-expired{border-color:color-mix(in srgb,var(--error) 40%,var(--border-light));background:color-mix(in srgb,var(--error) 6%,var(--surface))}
+.trace-approval__head{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12px}
+.trace-approval__badge{padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent)}
+.trace-approval__title{color:var(--text);font-weight:600}
+.trace-approval__tool{margin-left:auto;font-family:'JetBrains Mono','Fira Code',monospace;font-size:11px;color:var(--text3)}
+.trace-approval__args{margin:0;padding:7px 8px;border-radius:7px;background:rgba(127,127,127,.09);color:var(--text2);font-size:11px;font-family:'JetBrains Mono','Fira Code',monospace;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}
+.trace-approval__actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.trace-approval__btn{padding:5px 12px;border-radius:7px;border:1px solid var(--border-light);background:var(--surface);color:var(--text);font-size:12px;font-weight:600;cursor:pointer}
+.trace-approval__btn:hover:not(:disabled){border-color:var(--primary);color:var(--primary)}
+.trace-approval__btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.trace-approval__btn.primary:hover:not(:disabled){filter:brightness(1.08);color:#fff}
+.trace-approval__btn:disabled{opacity:.55;cursor:not-allowed}
+.trace-approval__hint{font-size:11px;color:var(--text3)}
+.trace-approval__result{font-size:12px;color:var(--text2);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* 工具卡：入参 / 输出 双面板 + JSON 高亮 */
+.trace-tool__body{padding:8px;border-top:1px solid var(--border-light);display:flex;flex-direction:column;gap:9px}
+.trace-panel{border:1px solid var(--border-light);border-radius:9px;overflow:hidden}
+.trace-panel--in{border-color:color-mix(in srgb,#60a5fa 30%,var(--border-light));background:color-mix(in srgb,#3b82f6 5%,var(--surface))}
+.trace-panel--in .trace-panel__hd{color:#93c5fd;background:color-mix(in srgb,#3b82f6 12%,transparent)}
+.trace-panel--out{border-color:color-mix(in srgb,#34d399 26%,var(--border-light));background:color-mix(in srgb,#10b981 5%,var(--surface))}
+.trace-panel--out .trace-panel__hd{color:#6ee7b7;background:color-mix(in srgb,#10b981 10%,transparent)}
+.trace-panel__hd{display:flex;align-items:center;gap:6px;padding:6px 9px;font-size:11px;font-weight:700;letter-spacing:.03em;border-bottom:1px solid var(--border-light)}
+.trace-panel__hd em{font-style:normal;font-family:var(--font-mono);font-size:9px;letter-spacing:.12em;opacity:.6;color:var(--text3)}
+.trace-panel__dot{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor;flex-shrink:0}
+.trace-panel__tag{margin-left:auto;font-size:9px;padding:1px 6px;border-radius:999px;color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.trace-panel .trace-code{margin:0;border-radius:0;background:#0b1220}
+.trace-panel--in .trace-code{background:#0b1526;color:#dbeafe}
+.trace-panel--out .trace-code{background:#08150f;color:#d1fae5}
+.trace-code .j-key{color:#93c5fd}.trace-code .j-str{color:#a7f3d0}.trace-code .j-num{color:#fbbf24}.trace-code .j-bool{color:#f9a8d4}.trace-code .j-dim{color:#94a3b8}
+.trace-approval__err{color:var(--error);font-size:11px}
+.trace-tool__src{padding:0 6px;border-radius:999px;font-size:10px;line-height:16px;color:var(--text3);border:1px solid var(--border-light);background:rgba(127,127,127,.08);white-space:nowrap}
+@media (max-width:767px){.trace-tool__src{display:none}}
+@media (max-width:767px){.trace-approval{margin:0 6px 6px;padding:8px}.trace-approval__hint{display:none}.trace-approval__args{max-height:120px}}
 </style>

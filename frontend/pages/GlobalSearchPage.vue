@@ -1,67 +1,80 @@
 <template>
   <div class="ui-page">
     <div class="ui-page-inner search-wrap">
-      <header class="ui-head">
-        <div>
-          <div class="ui-eyebrow">Universal Search</div>
+      <header class="ui-hero search-hero">
+        <div class="ui-hero-main">
+          <div class="ui-eyebrow">COMMAND SEARCH</div>
           <h1 class="ui-title">全局搜索</h1>
           <p class="ui-sub">在所有对话的标题与消息正文中检索，命中内容会高亮显示，点击可直接跳回对应会话。</p>
         </div>
+        <div class="ui-head-actions">
+          <span v-if="indexed" class="ui-badge">已索引 {{ indexed }} 个会话 · {{ messagesIndexed }} 条消息</span>
+        </div>
       </header>
 
-      <div class="search-box">
-        <Search :size="18" class="sb-icon" />
+      <div class="cmd-search">
+        <Search :size="20" class="cmd-search-icon" />
         <input
           ref="inputRef"
           v-model="query"
-          class="sb-input"
+          class="ui-input cmd-search-input"
           placeholder="输入关键词，回车搜索…"
           @keydown.enter="run"
         />
-        <button v-if="query" class="sb-clear" @click="clear"><X :size="14" /></button>
-        <button class="sb-go" :disabled="searching || !query.trim()" @click="run">
+        <button v-if="query" class="cmd-clear" title="清空" @click="clear">
+          <X :size="14" />
+        </button>
+        <button class="ui-btn ui-btn--primary cmd-go" :disabled="searching || !query.trim()" @click="run">
           {{ searching ? '搜索中…' : '搜索' }}
         </button>
       </div>
 
-      <div class="filters">
-        <button
-          v-for="f in filters"
-          :key="f.key"
-          :class="['ui-chip', { active: scope === f.key }]"
-          @click="scope = f.key; run()"
-        >{{ f.label }}</button>
-        <span class="filters-hint" v-if="indexed">
-          已索引 {{ indexed }} 个会话 · {{ messagesIndexed }} 条消息
-        </span>
+      <div class="cmd-meta">
+        <div class="ui-seg cmd-scope">
+          <button
+            v-for="f in filters"
+            :key="f.key"
+            :class="['ui-seg-item', { active: scope === f.key }]"
+            @click="scope = f.key; run()"
+          >{{ f.label }}</button>
+        </div>
+        <span class="cmd-tip"><span class="ui-kbd">↵</span> 回车直接搜索 · 结果按会话归档</span>
       </div>
 
-      <div v-if="history.length && !hasSearched" class="recent">
-        <div class="recent-hd">
-          <span>最近搜索</span>
-          <button class="link" @click="clearHistory">清空</button>
+      <section v-if="history.length && !hasSearched" class="ui-section cmd-recent">
+        <div class="ui-section-head">
+          <div>
+            <h2 class="ui-section-title">最近搜索</h2>
+            <p class="ui-section-sub">点击即可再次检索</p>
+          </div>
+          <div class="ui-section-actions">
+            <button class="ui-btn ui-btn--ghost ui-btn--sm" @click="clearHistory">清空</button>
+          </div>
         </div>
-        <div class="recent-list">
-          <button v-for="h in history" :key="h" class="recent-item" @click="query = h; run()">
+        <div class="cmd-chips">
+          <button v-for="h in history" :key="h" class="ui-chip" @click="query = h; run()">
             <History :size="12" /> {{ h }}
           </button>
         </div>
-      </div>
+      </section>
 
       <div v-if="searching" class="results">
-        <div v-for="i in 3" :key="i" class="ui-skeleton" style="height: 92px; margin-bottom: 10px"></div>
+        <div v-for="i in 3" :key="i" class="ui-skeleton cmd-skel"></div>
       </div>
 
-      <div v-else-if="hasSearched && !groups.length" class="ui-empty">
+      <div v-else-if="hasSearched && !groups.length" class="ui-empty cmd-empty">
         <div class="ui-empty-icon">🔍</div>
         <div class="ui-empty-title">没有找到「{{ lastQuery }}」</div>
         <div class="ui-empty-desc">试试更短的关键词，或切换到「全部」范围再搜一次。</div>
       </div>
 
       <div v-else-if="groups.length" class="results">
-        <div class="result-count">共 {{ totalHits }} 条命中，分布在 {{ groups.length }} 个会话</div>
+        <div class="result-count">
+          <span class="ui-badge ui-badge--primary">共 {{ totalHits }} 条命中</span>
+          <span>分布在 {{ groups.length }} 个会话</span>
+        </div>
 
-        <section v-for="g in groups" :key="g.session.id" class="rgroup">
+        <section v-for="g in groups" :key="g.session.id" class="ui-card rgroup">
           <button class="rgroup-hd" @click="openSession(g.session.id)">
             <span class="rgroup-icon">{{ g.session.icon || '💬' }}</span>
             <span class="rgroup-title">{{ g.session.title || '新对话' }}</span>
@@ -78,7 +91,7 @@
         </section>
       </div>
 
-      <div v-else class="ui-empty">
+      <div v-else class="ui-empty cmd-empty">
         <div class="ui-empty-icon">🧭</div>
         <div class="ui-empty-title">搜点什么吧</div>
         <div class="ui-empty-desc">例如工具名、项目名、某段代码片段，都会在历史对话里被找出来。</div>
@@ -230,95 +243,108 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* ---------- 布局 ---------- */
 .search-wrap { max-width: 900px; }
+.search-hero { margin-bottom: 24px; }
 
-.search-box {
+/* ---------- 命令式搜索台 ---------- */
+.cmd-search {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 52px;
-  padding: 0 8px 0 16px;
-  border: 1px solid var(--border-light);
+  padding: 8px 8px 8px 18px;
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-lg);
-  background: var(--surface);
+  background:
+    var(--grad-surface),
+    var(--surface);
   box-shadow: var(--shadow-sm);
-  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  transition: border-color var(--t-mid), box-shadow var(--t-mid);
 }
-.search-box:focus-within {
+.cmd-search:focus-within {
   border-color: var(--primary);
-  box-shadow: 0 0 0 4px var(--primary-soft), var(--shadow-md);
+  box-shadow: var(--shadow-glow);
 }
-.sb-icon { color: var(--text3); flex-shrink: 0; }
-.sb-input {
+.cmd-search-icon { color: var(--text3); flex-shrink: 0; }
+.cmd-search-input,
+.cmd-search-input:focus {
   flex: 1;
+  width: auto;
   min-width: 0;
+  height: 42px;
+  padding: 0;
   border: none;
-  outline: none;
   background: transparent;
-  color: var(--text);
+  box-shadow: none;
   font-size: 15px;
   letter-spacing: -0.01em;
 }
-.sb-input::placeholder { color: var(--text3); }
-.sb-clear {
-  width: 26px; height: 26px;
-  display: grid; place-items: center;
-  border: none; border-radius: 50%;
+.cmd-clear {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--r-full);
   background: var(--surface-alt);
   color: var(--text3);
+  transition: color var(--t-fast), background var(--t-fast);
 }
-.sb-clear:hover { color: var(--text); }
-.sb-go {
-  height: 36px;
-  padding: 0 16px;
-  border: none;
+.cmd-clear:hover { color: var(--text); background: var(--surface-3); }
+.cmd-go {
+  height: 40px;
+  padding: 0 20px;
   border-radius: var(--r-sm);
-  background: var(--grad-primary);
-  color: #fff;
-  font-size: 12.5px;
-  font-weight: 620;
-  box-shadow: 0 2px 10px var(--primary-glow);
+  flex-shrink: 0;
 }
-.sb-go:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+.cmd-go:disabled { box-shadow: none; }
 
-.filters {
+.cmd-meta {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 12px;
   flex-wrap: wrap;
-  margin: 16px 0 18px;
+  margin: 16px 0 24px;
 }
-.filters-hint { font-size: 10.5px; color: var(--text3); margin-left: auto; }
-
-.recent { margin-bottom: 20px; }
-.recent-hd {
-  display: flex; align-items: center; justify-content: space-between;
+.cmd-scope { flex-wrap: nowrap; }
+.cmd-tip {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
-  font-weight: 650;
   color: var(--text3);
-  margin-bottom: 9px;
 }
-.link { border: none; background: transparent; color: var(--text3); font-size: 11px; }
-.link:hover { color: var(--error); }
-.recent-list { display: flex; gap: 7px; flex-wrap: wrap; }
-.recent-item {
-  display: inline-flex; align-items: center; gap: 5px;
-  height: 27px; padding: 0 11px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--r-full);
-  background: var(--surface);
-  color: var(--text2);
-  font-size: 11.5px;
-  transition: all var(--t-fast);
-}
-.recent-item:hover { color: var(--primary); border-color: var(--primary); }
 
-.result-count { font-size: 11.5px; color: var(--text3); margin-bottom: 14px; }
+/* ---------- 最近搜索 ---------- */
+.cmd-recent { margin-bottom: 26px; }
+.cmd-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.cmd-chips .ui-chip { height: 28px; }
+
+/* ---------- 加载 / 空态 ---------- */
+.cmd-skel { height: 96px; margin-bottom: 10px; }
+.cmd-empty { padding-top: 64px; }
+
+/* ---------- 结果 ---------- */
+.results { animation: results-in 220ms var(--ease); }
+@keyframes results-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+.result-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--text3);
+  margin-bottom: 14px;
+}
 
 .rgroup {
-  border: 1px solid var(--border-light);
-  border-radius: var(--r-md);
-  background: var(--surface);
+  padding: 0;
   overflow: hidden;
   margin-bottom: 12px;
 }
@@ -327,49 +353,50 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 12px 14px;
+  padding: 13px 15px;
   border: none;
   border-bottom: 1px solid var(--border-light);
-  background: var(--surface-2);
+  background: transparent;
   text-align: left;
   transition: background var(--t-fast);
 }
 .rgroup-hd:hover { background: var(--surface-alt); }
-.rgroup-icon { font-size: 13px; }
+.rgroup-icon { font-size: 14px; flex-shrink: 0; }
 .rgroup-title {
   flex: 1;
-  font-size: 12.5px;
+  min-width: 0;
+  font-size: 13px;
   font-weight: 640;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.rgroup-go { color: var(--text3); }
+.rgroup-go { color: var(--text3); flex-shrink: 0; }
 
 .rhits { display: flex; flex-direction: column; }
 .rhit {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 10px 15px;
   border: none;
+  border-bottom: 1px solid var(--border-light);
   background: transparent;
   text-align: left;
-  border-bottom: 1px solid var(--border-light);
   transition: background var(--t-fast);
 }
 .rhit:last-child { border-bottom: none; }
 .rhit:hover { background: var(--primary-soft); }
 .rhit-role {
   flex-shrink: 0;
+  margin-top: 2px;
   font-size: 9.5px;
   font-weight: 700;
   padding: 2px 7px;
   border-radius: var(--r-full);
   background: var(--surface-alt);
   color: var(--text3);
-  margin-top: 2px;
 }
 .rhit-role.user { background: var(--primary-soft); color: var(--primary); }
 .rhit-role.title { background: var(--accent-soft); color: var(--accent); }
@@ -384,5 +411,26 @@ onMounted(() => {
   color: var(--text);
   border-radius: 3px;
   padding: 0 2px;
+}
+
+/* ---------- 移动端 ---------- */
+@media (max-width: 767px) {
+  .search-hero { margin-bottom: 16px; }
+  .cmd-search {
+    padding: 6px 6px 6px 14px;
+    gap: 8px;
+    border-radius: var(--r-md);
+  }
+  .cmd-search-input,
+  .cmd-search-input:focus { height: 40px; font-size: 14px; }
+  .cmd-go { height: 38px; padding: 0 14px; }
+  .cmd-meta { margin: 12px 0 18px; gap: 8px; }
+  .cmd-tip { display: none; }
+  .cmd-scope { flex: 1 1 100%; overflow-x: auto; scrollbar-width: none; }
+  .cmd-scope::-webkit-scrollbar { display: none; }
+  .cmd-scope .ui-seg-item { flex-shrink: 0; }
+  .cmd-chips .ui-chip { height: 32px; }
+  .rgroup-hd { padding: 11px 12px; }
+  .rhit { padding: 10px 12px; gap: 8px; }
 }
 </style>

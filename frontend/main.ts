@@ -11,6 +11,7 @@ import './assets/styles/main.css'
 import './assets/styles/theme.css'
 import './assets/styles/scrollbar.css'
 import './assets/styles/transitions.css'
+import './assets/styles/console.css'
 
 const app = createApp(App)
 

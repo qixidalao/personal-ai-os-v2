@@ -23,6 +23,8 @@ def test_skill_api_exposes_metadata_and_enabled_state():
     payload = response.json()
     assert payload["count"] >= 3
     research = next(item for item in payload["skills"] if item["id"] == "web-research")
+                                             # 中文：技能
+
     assert research["enabled"] is True
     assert "instructions" not in research
 

@@ -18,7 +18,13 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
+import uuid
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
+
+from runtime.approvals import approval_timeout, decide, get_approval_store
+from runtime.approvals.store import args_hash
 from pydantic import BaseModel, Field
 # 导入模块会触发 @ToolRegistry.register 装饰器注册
 from tools import ToolRegistry, ToolSpec
@@ -43,6 +49,8 @@ class ToolCallCompatRequest(BaseModel):
     name: str | None = None
     args: dict[str, Any] | None = None
     arguments: dict[str, Any] | None = None
+    approval_id: str | None = Field(None, description="已批准的审批 id（批准后重试时携带）")
+    session_id: str | None = Field(None, description="可选会话 id，用于会话级授权")
 
 
 def _read_settings() -> dict[str, Any]:
@@ -119,11 +127,18 @@ def _tool_to_dict(tool: ToolSpec, configured: dict[str, Any] | None = None) -> d
     configured = configured or {}
     enabled = bool(configured.get("enabled", tool.enabled))
     description = configured.get("description") or tool.description
-    schema = configured.get("schema")
+    # P0：显式 JSON Schema 是唯一契约来源；settings 里的旧 schema 只在工具没有显式契约时兜底
+    explicit = getattr(tool, "input_schema", None)
+    configured_schema = configured.get("schema")
     try:
-        schema_obj = json.loads(schema) if isinstance(schema, str) and schema.strip() else _schema_from_handler(tool)
+        if explicit:
+            schema_obj = explicit
+        elif isinstance(configured_schema, str) and configured_schema.strip():
+            schema_obj = json.loads(configured_schema)
+        else:
+            schema_obj = _schema_from_handler(tool)
     except Exception:
-        schema_obj = _schema_from_handler(tool)
+        schema_obj = explicit or _schema_from_handler(tool)
     return {
         "name": tool.name,
         "description": description,
@@ -218,15 +233,58 @@ async def call_tool(payload: ToolCallCompatRequest):
         raise HTTPException(status_code=404, detail=f"工具 '{raw_name}' 未注册")
     _ensure_enabled(name)
 
+    # ── P3：工具中心手动执行同样走三档权限 / 审批 ─────────────────────
+    decision = decide(name, args, session_id=payload.session_id)
+    if decision.kind == "deny":
+        logger.warning(f"⛔ 工具中心调用被策略拒绝: {name} ({decision.reason})")
+        raise HTTPException(status_code=403, detail=f"策略拒绝：{decision.reason}")
+
+    used_approval: str | None = None
+    approval_store = get_approval_store()
+    if decision.kind == "confirm":
+        if payload.approval_id:
+            record = approval_store.get(payload.approval_id)
+            if (
+                not record
+                or record.get("status") != "approved"
+                or record.get("tool") != name
+                or record.get("args_hash") != args_hash(args)
+            ):
+                raise HTTPException(status_code=403, detail="审批无效、已过期或参数不匹配")
+            used_approval = payload.approval_id
+        else:
+            record = approval_store.create(
+                run_id=f"tools-{uuid.uuid4().hex[:8]}",
+                tool_call_id=f"manual-{uuid.uuid4().hex[:8]}",
+                tool=name,
+                args=args,
+                risk=decision.risk,
+                timeout_s=approval_timeout(),
+                session_id=payload.session_id,
+            )
+            logger.info(f"🔐 工具中心调用需要审批: {name} approval={record['id']}")
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "ok": False,
+                    "status": "approval_required",
+                    "permission": "confirm",
+                    "approval": record,
+                },
+            )
+
     logger.info(f"🛠️ POST /api/v1/tools/call → {name} args={json.dumps(args, ensure_ascii=False)}")
     try:
         result = await asyncio.to_thread(ToolRegistry.call, name, **args)
+        if used_approval:
+            approval_store.consume(used_approval)
         logger.info(f"✅ {name} 调用成功 result_len={len(str(result))}")
         return {
             "ok": True,
             "name": name,
             "arguments": args,
             "result": _jsonable(result),
+            "permission": "approved" if used_approval else "allow",
             "time": datetime.now().isoformat(),
         }
     except TypeError as exc:
@@ -235,6 +293,19 @@ async def call_tool(payload: ToolCallCompatRequest):
     except HTTPException:
         raise
     except Exception as exc:
+        from tools import ToolValidationError
+
+        if isinstance(exc, ToolValidationError):
+            logger.warning(f"⛔ {name} 参数契约校验失败: {exc}")
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        try:
+            from runtime.execution import WorkspaceViolation
+
+            if isinstance(exc, WorkspaceViolation):
+                logger.warning(f"⛔ {name} 工作区越界: {exc}")
+                raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ImportError:
+            pass
         logger.error(f"❌ {name} 调用异常: {exc}")
         return {
             "ok": False,

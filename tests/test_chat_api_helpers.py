@@ -234,7 +234,7 @@ class TestPreview:
     def test_exceeds_limit(self):
         s = "a" * 100
         result = _preview(s, limit=80)
-        assert len(result) == 80 + 1  # 80 chars + …
+        assert len(result) == 80 + 1  # 80 chars + …  ｜ 80 个字符 + …
         assert result.endswith("…")
 
     def test_newline_replacement(self):
@@ -243,6 +243,7 @@ class TestPreview:
 
     def test_none_input(self):
         """None → str(None or '') → str('') → ''"""
+        # 中文：None → str(None or '') → str('') → ''
         assert _preview(None) == ""
 
     def test_number_input(self):

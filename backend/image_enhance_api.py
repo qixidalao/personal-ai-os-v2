@@ -1,4 +1,5 @@
 """HTTP upload endpoint for local, conservative photo enhancement."""
+# 中文：用于本地保守型照片增强的 HTTP 上传端点。
 from __future__ import annotations
 import asyncio,tempfile
 from pathlib import Path
@@ -6,6 +7,7 @@ from fastapi import APIRouter,File,HTTPException,UploadFile
 from tools.media import MEDIA_DIR,MAX_IMAGE_BYTES,send_image
 from tools.media.image_enhance import DEFAULT_MODEL,enhance_image_file
 router=APIRouter(prefix="/api/v1/media",tags=["media"])
+                                              # 中文：媒体
 _slots=asyncio.Semaphore(1)
 _SUPPORTED={"image/jpeg":".jpg","image/png":".png","image/webp":".webp","image/bmp":".bmp"}
 @router.get("/enhance/status")

@@ -1,9 +1,10 @@
 <template>
   <div class="ui-page">
     <div class="ui-page-inner">
-      <header class="ui-head">
-        <div>
-          <div class="ui-eyebrow">Prompt Library</div>
+      <!-- 页头 -->
+      <header class="ui-hero pl-hero">
+        <div class="ui-hero-main">
+          <div class="ui-eyebrow">PROMPT LIBRARY</div>
           <h1 class="ui-title">提示词库</h1>
           <p class="ui-sub">把常用的 System Prompt 沉淀下来。支持 <code v-pre>{{变量}}</code> 占位符，填写后一键复制成最终提示词。</p>
         </div>
@@ -17,49 +18,81 @@
         </div>
       </header>
 
-      <div v-if="loading" class="pl-grid">
-        <div v-for="i in 4" :key="i" class="ui-skeleton" style="height: 168px"></div>
+      <!-- 指标 -->
+      <div class="ui-grid ui-grid--3 pl-stats">
+        <div class="ui-stat">
+          <div class="ui-stat-label">提示词</div>
+          <div class="ui-stat-value">{{ prompts.length }}</div>
+          <div class="ui-stat-hint">已沉淀的 System Prompt</div>
+        </div>
+        <div class="ui-stat">
+          <div class="ui-stat-label">默认项</div>
+          <div class="ui-stat-value">{{ prompts.filter((p) => p.isDefault).length }}</div>
+          <div class="ui-stat-hint">对话默认使用</div>
+        </div>
+        <div class="ui-stat">
+          <div class="ui-stat-label">变量</div>
+          <div class="ui-stat-value">{{ prompts.reduce((n, p) => n + varsOf(p).length, 0) }}</div>
+          <div class="ui-stat-hint">占位符总数</div>
+        </div>
       </div>
 
-      <div v-else-if="!prompts.length" class="ui-empty">
-        <div class="ui-empty-icon">📄</div>
-        <div class="ui-empty-title">提示词库是空的</div>
-        <div class="ui-empty-desc">新建一条，把好用的角色设定固定下来，下次直接复用。</div>
-        <button class="ui-btn ui-btn--primary" style="margin-top: 8px" @click="createPrompt">
-          <Plus :size="14" /> 新建提示词
-        </button>
-      </div>
+      <!-- 列表 -->
+      <section class="ui-section pl-section">
+        <div class="ui-section-head">
+          <div>
+            <div class="ui-section-title">全部提示词</div>
+            <div class="ui-section-sub">点击「去对话」可直接把内容带入对话输入框。</div>
+          </div>
+          <div class="ui-section-actions">
+            <span class="ui-chip">共 {{ prompts.length }} 条</span>
+          </div>
+        </div>
 
-      <div v-else class="pl-grid">
-        <article
-          v-for="(p, idx) in prompts"
-          :key="idx"
-          class="pcard"
-          :class="{ default: p.isDefault }"
-        >
-          <div class="pcard-hd">
-            <div class="pcard-name">
-              <FileText :size="14" class="pcard-icon" />
-              <span>{{ p.name || '未命名' }}</span>
+        <div v-if="loading" class="pl-grid">
+          <div v-for="i in 4" :key="i" class="ui-skeleton" style="height: 168px"></div>
+        </div>
+
+        <div v-else-if="!prompts.length" class="ui-empty">
+          <div class="ui-empty-icon">📄</div>
+          <div class="ui-empty-title">提示词库是空的</div>
+          <div class="ui-empty-desc">新建一条，把好用的角色设定固定下来，下次直接复用。</div>
+          <button class="ui-btn ui-btn--primary" style="margin-top: 8px" @click="createPrompt">
+            <Plus :size="14" /> 新建提示词
+          </button>
+        </div>
+
+        <div v-else class="pl-grid">
+          <article
+            v-for="(p, idx) in prompts"
+            :key="idx"
+            class="pcard ui-card ui-card--hover"
+            :class="{ default: p.isDefault }"
+          >
+            <div class="pcard-hd ui-card-hd">
+              <div class="pcard-name ui-card-title">
+                <FileText :size="14" class="pcard-icon" />
+                <span>{{ p.name || '未命名' }}</span>
+              </div>
+              <span v-if="p.isDefault" class="ui-badge ui-badge--primary"><Star :size="9" /> 默认</span>
             </div>
-            <span v-if="p.isDefault" class="ui-badge ui-badge--primary"><Star :size="9" /> 默认</span>
-          </div>
 
-          <p class="pcard-body">{{ p.content || '（空）' }}</p>
+            <p class="pcard-body">{{ p.content || '（空）' }}</p>
 
-          <div v-if="varsOf(p).length" class="pcard-vars">
-            <span v-for="v in varsOf(p)" :key="v" class="var-pill">{{ v }}</span>
-          </div>
+            <div v-if="varsOf(p).length" class="pcard-vars">
+              <span v-for="v in varsOf(p)" :key="v" class="var-pill ui-chip">{{ v }}</span>
+            </div>
 
-          <div class="pcard-ft">
-            <button class="link-btn" @click="copy(p)"><Copy :size="12" /> 复制</button>
-            <button class="link-btn" @click="useInChat(p)"><MessageSquare :size="12" /> 去对话</button>
-            <button v-if="!p.isDefault" class="link-btn" @click="setDefault(idx)"><Star :size="12" /> 设为默认</button>
-            <button class="link-btn" @click="edit(idx)"><Pencil :size="12" /> 编辑</button>
-            <button class="link-btn danger" @click="remove(idx)"><Trash2 :size="12" /> 删除</button>
-          </div>
-        </article>
-      </div>
+            <div class="pcard-ft">
+              <button class="ui-btn ui-btn--sm ui-btn--ghost" @click="copy(p)"><Copy :size="12" /> 复制</button>
+              <button class="ui-btn ui-btn--sm ui-btn--ghost" @click="useInChat(p)"><MessageSquare :size="12" /> 去对话</button>
+              <button v-if="!p.isDefault" class="ui-btn ui-btn--sm ui-btn--ghost" @click="setDefault(idx)"><Star :size="12" /> 设为默认</button>
+              <button class="ui-btn ui-btn--sm ui-btn--ghost" @click="edit(idx)"><Pencil :size="12" /> 编辑</button>
+              <button class="ui-btn ui-btn--sm ui-btn--danger pcard-del" @click="remove(idx)"><Trash2 :size="12" /> 删除</button>
+            </div>
+          </article>
+        </div>
+      </section>
     </div>
 
     <!-- 编辑弹窗 -->
@@ -255,9 +288,16 @@ onMounted(load)
 </script>
 
 <style scoped>
+/* ============================================================
+   Prompt Library — Aurora Console
+   ============================================================ */
+/* 中文：============================================================ Prompt Library — Aurora Console ============================================================ */
+.pl-stats { margin-bottom: 18px; }
+
+/* ---------------- 卡片网格 ---------------- */
 .pl-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 14px;
 }
 
@@ -265,12 +305,9 @@ onMounted(load)
   display: flex;
   flex-direction: column;
   padding: 16px;
-  border: 1px solid var(--border-light);
   border-radius: var(--r-md);
-  background: var(--surface);
-  transition: border-color var(--t-mid), box-shadow var(--t-mid), transform var(--t-mid);
 }
-.pcard:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.pcard:hover { transform: translateY(-1px); }
 .pcard.default {
   border-color: color-mix(in srgb, var(--primary) 42%, transparent);
   background:
@@ -278,13 +315,17 @@ onMounted(load)
     var(--surface);
 }
 
-.pcard-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.pcard-name { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 650; min-width: 0; }
-.pcard-name span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pcard-hd { gap: 10px; margin-bottom: 10px; }
+.pcard-name { min-width: 0; font-size: 13.5px; }
+.pcard-name span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .pcard-icon { color: var(--primary); flex-shrink: 0; }
 
 .pcard-body {
-  margin-top: 10px;
+  margin: 0;
   font-size: 11.5px;
   line-height: 1.72;
   color: var(--text2);
@@ -296,43 +337,41 @@ onMounted(load)
   -webkit-box-orient: vertical;
   overflow: hidden;
   flex: 1;
-  min-height: 100px;
+  min-height: 96px;
 }
 
 .pcard-vars { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 10px; }
 .var-pill {
+  height: 22px;
+  padding: 0 9px;
   font-family: var(--font-mono);
   font-size: 10px;
-  padding: 1px 7px;
-  border-radius: var(--r-full);
-  background: var(--accent-soft);
   color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
 }
 
 .pcard-ft {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 4px;
   flex-wrap: wrap;
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--border-light);
 }
-.link-btn {
-  display: inline-flex; align-items: center; gap: 4px;
-  border: none; background: transparent;
-  color: var(--text3);
-  font-size: 11px;
-  font-weight: 560;
-  transition: color var(--t-fast);
-}
-.link-btn:hover { color: var(--primary); }
-.link-btn.danger:hover { color: var(--error); }
+.pcard-ft .ui-btn { color: var(--text2); }
+.pcard-ft .ui-btn:hover { color: var(--text); }
+.pcard-del { margin-left: auto; }
 
-/* 弹窗 */
+/* ---------------- 弹窗 ---------------- */
 .modal-mask {
-  position: fixed; inset: 0; z-index: 1500;
-  display: flex; align-items: center; justify-content: center;
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 20px;
   background: var(--overlay);
   backdrop-filter: blur(5px);
@@ -340,7 +379,8 @@ onMounted(load)
 .modal {
   width: min(94vw, 620px);
   max-height: 86vh;
-  display: flex; flex-direction: column;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-lg);
@@ -348,14 +388,24 @@ onMounted(load)
   overflow: hidden;
 }
 .modal-hd {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 15px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--border-light);
+  background: var(--grad-surface);
 }
-.modal-title { font-size: 14px; font-weight: 680; }
+.modal-title { font-size: 14px; font-weight: 680; letter-spacing: -0.01em; }
 .modal-bd { padding: 18px; overflow-y: auto; }
 .mono { font-family: var(--font-mono); font-size: 12px; }
-.modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-light);
+}
 
 .draft-vars { margin-bottom: 14px; }
 .var-inputs { display: flex; flex-direction: column; gap: 8px; }
@@ -368,7 +418,13 @@ onMounted(load)
 }
 
 .default-row {
-  display: flex; align-items: center; gap: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
   font-size: 12.5px;
   color: var(--text2);
   cursor: pointer;
@@ -379,4 +435,23 @@ onMounted(load)
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* AIOS-MOBILE */
+/* 中文：AIOS-MOBILE */
+@media (max-width: 767px) {
+  .pl-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .pcard { padding: 14px; }
+  .pcard-body { min-height: 0; -webkit-line-clamp: 4; line-clamp: 4; }
+  .pcard-ft { gap: 4px; }
+  .pcard-ft .ui-btn { min-height: 36px; }
+  .pcard-del { margin-left: 0; }
+  .var-input { flex-direction: column; align-items: stretch; gap: 4px; }
+  .var-input span { min-width: 0; }
+  .modal-mask { padding: 12px; }
+  .modal { width: 100%; max-height: 88vh; }
+  .modal-hd { padding: 12px 14px; }
+  .modal-bd { padding: 14px; }
+}
+/* /AIOS-MOBILE */
+/* 中文：/AIOS-MOBILE */
 </style>
