@@ -235,7 +235,7 @@ async def run_remote(user_id: str, role: str, command: str, timeout: int | None 
         f"--memory {shlex.quote(memory)} --cpus {shlex.quote(cpus)} "
         f"--pids-limit 256 --read-only "
         f"--tmpfs /tmp:rw,size=64m,nosuid,nodev "
-        f"--tmpfs /workspace:rw,size=512m,nosuid,nodev "
+        f"--tmpfs /workspace:rw,size=512m,nosuid,nodev,uid=10001,gid=10001 "
         f"--workdir /workspace "
         f"{shlex.quote(image)} sh -lc {shlex.quote(command)}"
     )

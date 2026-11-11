@@ -514,7 +514,7 @@ class AuthMiddleware:
         # settings PUT 由 handler 写入当前账号自己的隔离文件。
         method = (scope.get("method") or "GET").upper()
         # Tool execution stays admin-only; personal approval records are scoped in their API handlers.
-        owner_only = path.startswith("/api/v1/tools/call") or path == "/api/v1/approvals/grants"
+        owner_only = path.startswith("/api/v1/tools/call")
         settings_instance_write = (
             path == "/api/v1/settings" and method not in ("GET", "HEAD")
             and session and session.get("role") == "owner"

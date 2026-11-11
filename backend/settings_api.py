@@ -171,7 +171,7 @@ def _is_owner_request(request: Request) -> bool:
         session = session_from_scope(request.scope)
         return bool(session and session.get("role") == "owner")
     except Exception:
-        return True  # 鉴权未启用时保持兼容
+        return False
 
 
 USER_SETTING_KEYS = {

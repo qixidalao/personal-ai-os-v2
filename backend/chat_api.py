@@ -791,12 +791,31 @@ async def _stream_events(req: ChatRequest, request_id: str, request: Request | N
                     except Exception:
                         _role = "owner"
                     if _role != "owner":
-                        raise PermissionError(
-                            "当前账号未配置执行服务器，不能执行本地工具；"
-                            "请先在设置中配置执行服务器"
+                        if fn_name not in ("shell_exec", "python_exec"):
+                            raise PermissionError("该工具暂不支持普通账号的远程执行")
+                        from backend.executor import run_remote as _run_remote
+                        if fn_name == "shell_exec":
+                            _remote_command = str(fn_args.get("command") or "").strip()
+                        else:
+                            _remote_command = "python3 - <<'AIOS_PYTHON\n" + str(fn_args.get("code") or "") + "\nAIOS_PYTHON"
+                        if not _remote_command:
+                            raise ValueError("执行内容为空")
+                        _remote_result = await _run_remote(
+                            _uid, "member", _remote_command,
+                            timeout=fn_args.get("timeout", 60),
                         )
-                async with _TOOL_EXEC_SEM:
-                    tool_result = await asyncio.to_thread(ToolRegistry.call, fn_name, **fn_args)
+                        tool_result = {
+                            "stdout": _remote_result.get("stdout", ""),
+                            "stderr": _remote_result.get("stderr", ""),
+                            "return_code": _remote_result.get("exit_code"),
+                            "success": bool(_remote_result.get("ok")),
+                            "sandbox": "remote-docker",
+                            "error": _remote_result.get("stderr") if not _remote_result.get("ok") else None,
+                            "mode": "ssh",
+                        }
+                    else:
+                        async with _TOOL_EXEC_SEM:
+                            tool_result = await asyncio.to_thread(ToolRegistry.call, fn_name, **fn_args)
                 result_str = _tool_result_to_str(tool_result)
             except Exception as exc:
                 ok = False

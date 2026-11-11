@@ -43,3 +43,13 @@ def test_member_reset_does_not_touch_instance_settings(tmp_path, monkeypatch):
     assert r.status_code==200 and r.json()["scope"]=="user"
     assert 'admin-secret' in instance.read_text(encoding='utf-8')
     assert c.get("/api/v1/settings").json()["providers"]==[]
+
+
+def test_unresolved_identity_fails_closed(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings_api, "SETTINGS_FILE", tmp_path / "instance.json")
+    settings_api.SETTINGS_FILE.write_text('{"providers":[{"key":"global-secret"}]}', encoding="utf-8")
+    monkeypatch.setattr(settings_api, "_settings_identity", lambda request: ("", ""))
+    app=FastAPI(); app.include_router(settings_api.router)
+    response=TestClient(app).get("/api/v1/settings")
+    assert response.status_code == 401
+    assert "global-secret" not in response.text
