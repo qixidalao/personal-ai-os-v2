@@ -35,7 +35,7 @@
             <section class="ui-section">
               <div class="ui-section-head">
                 <div>
-                  <h2 class="ui-section-title">模型提供商</h2>
+                  <h2 class="ui-section-title">{{ isAdmin ? '实例模型提供商' : '我的模型提供商' }}</h2>
                   <p class="ui-section-sub">接入 OpenAI 兼容服务。填写 API Key 后可自动发现模型列表。</p>
                 </div>
                 <div class="ui-section-actions">
@@ -65,7 +65,7 @@
             <section class="ui-section">
               <div class="ui-section-head">
                 <div>
-                  <h2 class="ui-section-title">全局 LLM 生成参数</h2>
+                  <h2 class="ui-section-title">{{ isAdmin ? '实例默认生成参数' : '个人默认生成参数' }}</h2>
                   <p class="ui-section-sub">新建对话默认使用的采样参数。</p>
                 </div>
               </div>
@@ -108,40 +108,7 @@
               </div>
             </section>
 
-            <section class="ui-section">
-              <div class="ui-section-head">
-                <div>
-                  <h2 class="ui-section-title">相关页面</h2>
-                  <p class="ui-section-sub">提示词、工具与智能体已有独立页面，设置页不再重复维护，前往对应页面管理。</p>
-                </div>
-              </div>
-              <div class="set-jump-grid">
-                <a class="set-jump" href="#/prompt">
-                  <span class="set-jump-icon">📝</span>
-                  <span class="set-jump-main">
-                    <span class="set-jump-name">提示词库</span>
-                    <span class="set-jump-path">/prompt</span>
-                  </span>
-                  <span class="set-jump-arrow">↗</span>
-                </a>
-                <a class="set-jump" href="#/tools">
-                  <span class="set-jump-icon">🧰</span>
-                  <span class="set-jump-main">
-                    <span class="set-jump-name">工具中心</span>
-                    <span class="set-jump-path">/tools</span>
-                  </span>
-                  <span class="set-jump-arrow">↗</span>
-                </a>
-                <a class="set-jump" href="#/agent">
-                  <span class="set-jump-icon">🤖</span>
-                  <span class="set-jump-main">
-                    <span class="set-jump-name">智能体</span>
-                    <span class="set-jump-path">/agent</span>
-                  </span>
-                  <span class="set-jump-arrow">↗</span>
-                </a>
-              </div>
-            </section>
+
           </div>
 
           <!-- ==================== 对话体验 ==================== -->
@@ -168,7 +135,7 @@
               <div class="ui-section-head">
                 <div>
                   <h2 class="ui-section-title">主题</h2>
-                  <p class="ui-section-sub">切换全局明暗配色。</p>
+                  <p class="ui-section-sub">切换个人界面主题。</p>
                 </div>
               </div>
               <div class="set-well">
@@ -352,6 +319,28 @@
               <p v-if="!ttsSupported && ttsSource === 'system'" class="acct-hint">当前浏览器不支持系统语音；可改用第三方 TTS。</p>
               <p v-if="ttsMsg" class="acct-msg">{{ ttsMsg }}</p>
             </section>
+            <section class="ui-section">
+              <div class="ui-section-head">
+                <div>
+                  <h2 class="ui-section-title">聊天性能</h2>
+                  <p class="ui-section-sub">影响首字延迟的两项开关，修改后自动保存。</p>
+                </div>
+              </div>
+              <div class="set-row">
+                <div class="set-row-main">
+                  <div class="set-row-title">深度思考</div>
+                  <div class="set-row-desc">关闭后模型跳过 reasoning，首字明显更快；需要复杂推理时再打开。</div>
+                </div>
+                <button :class="['ui-switch', thinking ? 'on' : '']" @click="thinking = !thinking"></button>
+              </div>
+              <div class="set-row">
+                <div class="set-row-main">
+                  <div class="set-row-title">自动工具选择</div>
+                  <div class="set-row-desc">仅在检测到工具意图时携带工具 schema，普通闲聊不再上传 12 个工具定义。</div>
+                </div>
+                <button :class="['ui-switch', autoTools ? 'on' : '']" @click="autoTools = !autoTools"></button>
+              </div>
+            </section>
           </div>
 
           <!-- ==================== 数据与安全 ==================== -->
@@ -448,19 +437,10 @@
 
           <!-- ==================== 管理员运维 ==================== -->
           <div v-if="activeTab === 'data' && isAdmin" class="set-pane">
-            <section class="ui-section">
-              <div class="ui-section-head">
-                <div>
-                  <h2 class="ui-section-title">存储与高级</h2>
-                  <p class="ui-section-sub">仅管理员可见的运维信息与开关。</p>
-                </div>
-              </div>
-            </section>
-
 <section class="ui-section">
               <div class="ui-section-head">
                 <div>
-                  <h2 class="ui-section-title">存储统计</h2>
+                  <h2 class="ui-section-title">存储与运行统计</h2>
                 </div>
               </div>
               <div class="set-well">
@@ -495,7 +475,7 @@
             <section class="ui-section">
               <div class="ui-section-head">
                 <div>
-                  <h2 class="ui-section-title">数据与授权</h2>
+                  <h2 class="ui-section-title">授权与个人数据</h2>
                   <p class="ui-section-sub">这里只影响你自己的设置与本会话的工具授权。</p>
                 </div>
               </div>
@@ -558,7 +538,7 @@
 <section class="ui-section">
               <div class="ui-section-head">
                 <div>
-                  <h2 class="ui-section-title">数据管理</h2>
+                  <h2 class="ui-section-title">个人设置重置</h2>
                   <p class="ui-section-sub">高危操作，执行前请确认。</p>
                 </div>
                 <div class="ui-section-actions">
@@ -566,35 +546,14 @@
                 </div>
               </div>
               <div class="set-well set-danger-well">
-                <p class="set-danger-text">此操作将重置设置数据，不会删除会话文件。</p>
+                <p class="set-danger-text">此操作只重置你的个人设置，不会删除会话文件或媒体。</p>
                 <button class="ui-btn ui-btn--danger" @click="showNuke = true">💣 重置所有设置</button>
               </div>
             </section>
           </div>
 
           <div v-if="activeTab === 'account'" class="set-pane">
-            <section class="ui-section">
-              <div class="ui-section-head">
-                <div>
-                  <h2 class="ui-section-title">聊天性能</h2>
-                  <p class="ui-section-sub">影响首字延迟的两项开关，修改后自动保存。</p>
-                </div>
-              </div>
-              <div class="set-row">
-                <div class="set-row-main">
-                  <div class="set-row-title">深度思考</div>
-                  <div class="set-row-desc">关闭后模型跳过 reasoning，首字明显更快；需要复杂推理时再打开。</div>
-                </div>
-                <button :class="['ui-switch', thinking ? 'on' : '']" @click="thinking = !thinking"></button>
-              </div>
-              <div class="set-row">
-                <div class="set-row-main">
-                  <div class="set-row-title">自动工具选择</div>
-                  <div class="set-row-desc">仅在检测到工具意图时携带工具 schema，普通闲聊不再上传 12 个工具定义。</div>
-                </div>
-                <button :class="['ui-switch', autoTools ? 'on' : '']" @click="autoTools = !autoTools"></button>
-              </div>
-            </section>
+
 
             <section class="ui-section">
               <div class="ui-section-head">
@@ -641,16 +600,16 @@
                 </div>
                 <Dropdown :items="executorModeOptions" :label="executorModeLabel" @select="onSelectExecutorMode" class="acct-dropdown" />
                 <div v-if="helpOpen.mode" class="acct-tip">
-                  选择「使用我的服务器」后填写下面的信息；不启用时只能聊天，不能执行工具。
+                  SSH 模式填写服务器连接信息；本机设备模式需要配对 Agent；未启用执行器时只能聊天。
                 </div>
               </div>
 
-              <div v-if="!isOwner" class="acct-field">
+              <div v-if="!isOwner && executorMode === 'ssh'" class="acct-field">
                 <div class="acct-label-row"><span class="acct-label">我的持久数据存放位置</span></div>
                 <Dropdown :items="storageModeOptions" :label="storageModeLabel" @select="onSelectStorageMode" class="acct-dropdown" />
                 <div class="acct-tip">默认保存在 AIOS 实例的账号目录；选择远程后，聊天记录与媒体写到你自己的服务器。配置 SSH 后可选择迁移已有数据。</div>
               </div>
-              <div v-if="showStorageMigration" class="acct-tip acct-tip--choice">
+              <div v-if="showStorageMigration && executorMode === 'ssh'" class="acct-tip acct-tip--choice">
                 发现已有聊天记录/媒体。是否现在复制到你的远程服务器？本地源数据会保留，远程复制成功后才切换存储。
                 <div class="acct-actions">
                   <button class="acct-btn" :disabled="storageBusy" @click="migrateStorage">{{ storageBusy ? '迁移中…' : '迁移并切换' }}</button>
@@ -658,6 +617,7 @@
                 </div>
                 <span v-if="storageMsg">{{ storageMsg }}</span>
               </div>
+              <template v-if="executorMode === 'ssh'">
               <div class="acct-field">
                 <div class="acct-label-row">
                   <span class="acct-label">服务器地址</span>
@@ -715,6 +675,8 @@
               </div>
               <p v-if="executorMsg" class="acct-msg">{{ executorMsg }}</p>
               <pre v-if="executorPublicKey" class="acct-key">{{ executorPublicKey }}</pre>
+
+              </template>
 
               <template v-if="executorMode === 'device'">
                 <div class="acct-field device-pair">
@@ -779,8 +741,8 @@
                   <ul class="about-list">
                     <li>和 AI 对话，保存自己的历史会话；</li>
                     <li>上传图片或文件，让 AI 帮你处理；</li>
-                    <li>需要执行代码时，在「我的账号 → 执行服务器」里配置自己的服务器；</li>
-                    <li>在「我的账号」里修改密码、邮箱，或退出登录。</li>
+                    <li>需要代码执行时，可选公网 SSH 服务器或配对自己的本机设备；</li>
+                    <li>每个账号使用自己的 Provider、会话与执行器设置。</li>
                   </ul>
                 </div>
               </section>
@@ -846,7 +808,7 @@
               </div>
             </section>
 
-            <section class="ui-section">
+            <section v-if="isAdmin" class="ui-section">
               <div class="ui-section-head">
                 <div>
                   <h2 class="ui-section-title">API 入口</h2>
@@ -975,16 +937,16 @@ const route = useRoute()
 const isAdmin = computed(() => route.path.startsWith('/admin'))
 const isMobile = ref(window.innerWidth < 768)
 const adminTabs = [
-  { id: 'global', label: '模型与服务', icon: '🧠' },
+  { id: 'global', label: '模型与默认值', icon: '🧠' },
   { id: 'mailsec', label: '邮件与安全', icon: '✉️' },
-  { id: 'data', label: '数据与运维', icon: '🛠️' },
+  { id: 'data', label: '实例运维', icon: '🛠️' },
   { id: 'about', label: '关于', icon: 'ℹ️' },
 ]
 const userTabs = [
-  { id: 'global', label: '模型与服务', icon: '🧠' },
-  { id: 'agent', label: '外观与对话', icon: '💬' },
-  { id: 'account', label: '我的账号', icon: '👤' },
-  { id: 'data', label: '数据与授权', icon: '📊' },
+  { id: 'global', label: '模型', icon: '🧠' },
+  { id: 'agent', label: '体验', icon: '💬' },
+  { id: 'account', label: '账号与执行', icon: '👤' },
+  { id: 'data', label: '授权与数据', icon: '📊' },
 ]
 const tabs = computed(() => (isAdmin.value ? adminTabs : userTabs))
 const activeTab = ref(isAdmin.value ? 'mailsec' : 'global')
