@@ -172,7 +172,6 @@
                 </div>
               </div>
             </section>
-          </div>
 
             <section class="ui-section">
               <div class="ui-section-head">
@@ -913,6 +912,7 @@
       </div>
     </div>
   </div>
+</div>
 </template>
 
 <script setup lang="ts">
@@ -2350,27 +2350,30 @@ onUnmounted(() => { window.removeEventListener('resize', onResize); if (saveTime
 
 /* ---------- navigation responsive behavior ---------- */
 .set-nav {
-  width: min(100%, 720px);
-  display: flex;
-  flex-wrap: nowrap;
+  width: min(100%, 860px);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
-  overflow-x: auto;
-  scrollbar-width: thin;
   margin-bottom: 20px;
 }
 .set-nav .ui-seg-item {
-  flex: 0 0 auto;
-  min-width: 132px;
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  min-height: 40px;
+  height: auto;
   justify-content: center;
+  white-space: normal;
+  text-align: center;
 }
-.set-shell.mobile .set-nav { width: 100%; }
+.set-shell.mobile .set-nav { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .set-shell.mobile .set-pane { max-width: none; }
 .set-pane { max-width: 860px; }
 
 @media (max-width: 767px) {
   .set-hero { margin-bottom: 16px; }
-  .set-nav { width: 100%; margin-bottom: 18px; padding-bottom: 2px; }
-  .set-nav .ui-seg-item { min-width: 118px; height: 38px; }
+  .set-nav { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 18px; }
+  .set-nav .ui-seg-item { min-height: 44px; padding: 7px 8px; gap: 6px; }
   .set-pane { max-width: none; }
   .set-well { padding: 12px 14px; }
   .set-well--flush { padding: 0; }
