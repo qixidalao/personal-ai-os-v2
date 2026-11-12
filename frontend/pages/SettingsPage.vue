@@ -352,6 +352,7 @@
               <p v-if="!ttsSupported && ttsSource === 'system'" class="acct-hint">当前浏览器不支持系统语音；可改用第三方 TTS。</p>
               <p v-if="ttsMsg" class="acct-msg">{{ ttsMsg }}</p>
             </section>
+          </div>
 
           <!-- ==================== 数据与安全 ==================== -->
 
@@ -445,10 +446,9 @@
             </section>
           </div>
 
-          <!-- ==================== 账号与执行 ==================== -->
-
-            <div v-if="activeTab === 'mailsec' && isAdmin" class="set-pane">
-<section class="ui-section">
+          <!-- ==================== 管理员运维 ==================== -->
+          <div v-if="activeTab === 'data' && isAdmin" class="set-pane">
+            <section class="ui-section">
               <div class="ui-section-head">
                 <div>
                   <h2 class="ui-section-title">存储与高级</h2>
@@ -491,9 +491,7 @@
 
           </div>
 
-
-
-          <div v-if="activeTab === 'data'" class="set-pane">
+          <div v-if="activeTab === 'data' && !isAdmin" class="set-pane">
             <section class="ui-section">
               <div class="ui-section-head">
                 <div>
@@ -869,10 +867,8 @@
               </div>
             </section>
           </div>
-
         </div>
       </div>
-    </div>
 
     <!-- ==================== 执行器文档弹层 ==================== -->
     <div v-if="showExecutorDocModal" class="set-modal-overlay" @click.self="showExecutorDocModal = false">
@@ -979,7 +975,9 @@ const route = useRoute()
 const isAdmin = computed(() => route.path.startsWith('/admin'))
 const isMobile = ref(window.innerWidth < 768)
 const adminTabs = [
+  { id: 'global', label: '模型与服务', icon: '🧠' },
   { id: 'mailsec', label: '邮件与安全', icon: '✉️' },
+  { id: 'data', label: '数据与运维', icon: '🛠️' },
   { id: 'about', label: '关于', icon: 'ℹ️' },
 ]
 const userTabs = [
@@ -1954,10 +1952,12 @@ onUnmounted(() => { window.removeEventListener('resize', onResize); if (saveTime
 
 .set-nav {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
-  width: fit-content;
+  width: min(100%, 720px);
   max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
   margin-bottom: 20px;
 }
 .set-nav-icon { font-size: 13px; line-height: 1; }
@@ -2386,43 +2386,30 @@ onUnmounted(() => { window.removeEventListener('resize', onResize); if (saveTime
 }
 .set-prompt-content { min-height: 180px; }
 
-/* ---------- isMobile 兜底 ---------- */
-.set-shell.mobile .set-nav {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  overflow: visible;
+/* ---------- navigation responsive behavior ---------- */
+.set-nav {
+  width: min(100%, 720px);
+  display: flex;
   flex-wrap: nowrap;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  margin-bottom: 20px;
 }
-.set-shell.mobile .set-nav .ui-seg-item {
-  width: 100%;
+.set-nav .ui-seg-item {
+  flex: 0 0 auto;
+  min-width: 132px;
   justify-content: center;
-  height: 40px;
 }
-.set-shell.mobile .set-nav .ui-seg-item:last-child:nth-child(odd) { grid-column: span 2; }
+.set-shell.mobile .set-nav { width: 100%; }
 .set-shell.mobile .set-pane { max-width: none; }
+.set-pane { max-width: 860px; }
 
-/* ---------- 移动端 ---------- */
 @media (max-width: 767px) {
   .set-hero { margin-bottom: 16px; }
-  .set-nav {
-    width: 100%;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    overflow: visible;
-    margin-bottom: 18px;
-  }
-  .set-nav .ui-seg-item {
-    width: 100%;
-    height: 40px;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-  .set-nav .ui-seg-item:last-child:nth-child(odd) { grid-column: span 2; }
+  .set-nav { width: 100%; margin-bottom: 18px; padding-bottom: 2px; }
+  .set-nav .ui-seg-item { min-width: 118px; height: 38px; }
   .set-pane { max-width: none; }
-
   .set-well { padding: 12px 14px; }
   .set-well--flush { padding: 0; }
   .set-list-item { flex-wrap: wrap; align-items: center; }
@@ -2431,17 +2418,14 @@ onUnmounted(() => { window.removeEventListener('resize', onResize); if (saveTime
   .set-tool-item { flex-wrap: wrap; align-items: center; }
   .set-tool-item-main { flex: 1 1 100%; }
   .set-tool-item > .ui-btn { margin-left: auto; }
-
   .set-inline-row { flex-direction: column; align-items: stretch; }
   .set-input-wrp { width: 100%; }
   .set-refresh-btn { width: 100%; height: 34px; }
-
   .about-info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .about-tech-grid { grid-template-columns: minmax(0, 1fr); }
   .set-jump-grid { grid-template-columns: minmax(0, 1fr); }
   .about-api-item { gap: 4px 8px; }
   .about-api-path { white-space: normal; }
-
   .set-modal-overlay { padding: 12px; }
   .set-modal { max-width: 100%; max-height: 88vh; padding: 16px; }
   .set-modal-actions { flex-wrap: wrap; }
