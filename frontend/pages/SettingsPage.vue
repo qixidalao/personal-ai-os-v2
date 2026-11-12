@@ -5,13 +5,13 @@
         <div class="ui-hero-main">
           <div class="ui-eyebrow">CONSOLE</div>
           <h1 class="ui-title">{{ isAdmin ? '管理员设置' : '设置' }}</h1>
-          <p class="ui-sub">{{ isAdmin ? '模型、工具、数据与安全的全局配置。仅管理员可见。' : '外观、账号与执行服务器的个人设置，修改后自动保存。' }}</p>
+          <p class="ui-sub">{{ isAdmin ? '邮件注册、安全策略、模型默认值与实例运维。仅管理员可见。' : '个人模型、体验偏好部分自动保存；邮件、安全、账号与执行器设置需点击保存。' }}</p>
         </div>
         <div class="ui-head-actions">
           <router-link v-if="isAdmin" to="/settings" class="ui-btn ui-btn--ghost ui-btn--sm">← 返回用户设置</router-link>
           <router-link v-else-if="isOwner" to="/admin" class="ui-btn ui-btn--ghost ui-btn--sm">管理员控制台 →</router-link>
           <span :class="['ui-badge', loadingSettings ? '' : 'ui-badge--ok']">
-            {{ loadingSettings ? '正在同步配置…' : '自动保存已开启' }}
+            {{ settingsSaveStateLabel }}
           </span>
         </div>
       </header>
@@ -112,7 +112,7 @@
           </div>
 
           <!-- ==================== 对话体验 ==================== -->
-          <div v-if="activeTab === 'agent'" class="set-pane">
+          <div v-if="activeTab === 'experience'" class="set-pane">
             <section class="ui-section">
               <div class="ui-section-head">
                 <div>
@@ -944,7 +944,7 @@ const adminTabs = [
 ]
 const userTabs = [
   { id: 'global', label: '模型', icon: '🧠' },
-  { id: 'agent', label: '体验', icon: '💬' },
+  { id: 'experience', label: '体验', icon: '💬' },
   { id: 'account', label: '账号与执行', icon: '👤' },
   { id: 'data', label: '授权与数据', icon: '📊' },
 ]
@@ -1101,32 +1101,36 @@ const executorMsg = ref('')
 const executorBusy = ref(false)
 const showNuke = ref(false)
 const loadingSettings = ref(true)
+const settingsSaveState = ref<'loading' | 'saved' | 'saving' | 'error'>('loading')
+const settingsSaveStateLabel = computed(() => ({ loading: '正在读取设置…', saved: '自动保存：已保存', saving: '正在保存…', error: '自动保存失败' })[settingsSaveState.value])
 
 // 关于面板数据
 const appVersion = 'v2.1.0'
 const buildDate = '2026-11-11'
-const aboutDesc = computed(() => isAdmin.value ? '个人 AI 工作台与本地智能中枢：聊天、Agent、工具、记忆、多用户与远程执行一体化。' : '个人 AI 工作台：聊天、记录、工具与记忆。')
+const aboutDesc = computed(() => isAdmin.value ? '自托管 AI 工作台：对话、记忆、工具审批与可选执行器。' : '个人 AI 工作台：对话、记忆、工具与个人设置。')
 const aboutMotto = '万物皆配置 · 万物皆事件 · 万物皆插件 · 万物皆流'
-const capabilities = [
-  '邮箱注册 / 登录', '30 天滑动会话', '多用户归属隔离（Phase 1）',
-  'BYO SSH 执行器', 'bwrap 本地沙箱', '工具审批 / 审计',
-  'Cloudflare Tunnel', 'SSE 逐字流式', '自动工具选择',
-  '深度思考开关', 'SMTP 验证码', '本机免登录',
-]
+const capabilities = computed(() => isAdmin.value ? [
+  '邮箱账号与会话', '流式对话', '按会话归属过滤的会话与执行记录',
+  '工具审批与执行审计', '管理员本机受限沙箱', '用户自备 SSH runner',
+  '配对的个人设备 Agent', 'SMTP 验证与密码恢复', 'loopback 首次管理员初始化',
+] : [
+  '个人 Provider 与 API Key', '个人会话与设置', '流式对话',
+  '会话级工具授权', '自备 SSH 执行器或配对本机 Agent',
+])
 const securityNotes = [
   '所有 /api/* 与 WebSocket 由后端 ASGI 中间件鉴权，不是前端页面拦截。',
   '本机免登录仅限 loopback + Host 本机 + 无代理头；外部 forwarder 无法伪装。',
   '审批、手动工具执行、设置写入：仅 owner（或本机 / Bearer Token）。',
   'member 只能访问自己的会话与 runs；未配置远程执行器时禁止本地工具。',
-  'member 的远程执行器只允许公网 SSH 服务器；填 127.0.0.1 会被拒绝。',
+  'member 可使用公网 SSH 执行器或配对的本机 Agent；普通账号任务不会回退到 AIOS 主机本地执行。',
   '登录失败 5 次锁定 15 分钟；登录 / 注册有 IP 限流。',
 ]
 const techStack = {
   '前端': 'Vue 3 + TypeScript + Vite',
   '后端': 'Python 3.14 / FastAPI',
-  '存储': 'SQLite + JSON 会话文件',
+  '存储': 'SQLite + JSON 会话文件；媒体/文件仍有未完成的租户隔离边界',
   '执行': 'bwrap 沙箱 / BYO SSH runner',
-  '网络': 'Cloudflare Tunnel / SSE',
+  '网络': 'HTTP API / SSE',
   '鉴权': '邮箱账号 + scrypt + HttpOnly 会话',
 }
 const apiGroups = [
@@ -1331,9 +1335,14 @@ async function nukeAll() {
 
 async function loadSettings() {
   loadingSettings.value = true
-  try { applySettings(await apiGet('/api/v1/settings')) }
-  catch (e) { console.warn('设置加载失败，使用默认值', e) }
-  finally { loadingSettings.value = false }
+  settingsSaveState.value = 'loading'
+  try {
+    applySettings(await apiGet('/api/v1/settings'))
+    settingsSaveState.value = 'saved'
+  } catch (e) {
+    settingsSaveState.value = 'error'
+    console.warn('设置加载失败，使用默认值', e)
+  } finally { loadingSettings.value = false }
 }
 
 async function loadSessionCount() {
@@ -1434,6 +1443,7 @@ function autoSave() {
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(async () => {
     try {
+      settingsSaveState.value = 'saving'
       await apiPut('/api/v1/settings', {
         params: { ...params }, streaming: streaming.value,
         providers: providers.value.map(p => ({ ...p, models: normalizeModels(p.models) })),
@@ -1442,8 +1452,12 @@ function autoSave() {
         glass: glass.value, devMode: devMode.value, displayLimit: displayLimit.value,
         thinking: thinking.value, autoTools: autoTools.value,
       })
+      settingsSaveState.value = 'saved'
       window.dispatchEvent(new CustomEvent('settings:providers-updated'))
-    } catch (e) { console.warn('设置保存失败', e) }
+    } catch (e) {
+      settingsSaveState.value = 'error'
+      console.warn('设置保存失败', e)
+    }
   }, 500)
 }
 
