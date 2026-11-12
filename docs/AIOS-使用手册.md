@@ -29,3 +29,18 @@
 ## 首次部署
 
 首次打开时，如果账号库为空，只有本机地址会显示「创建管理员账号」。创建后该入口自动关闭；普通新账号是否能注册由实例管理员在管理员控制台配置。
+
+## 用户数据存储 / User data storage
+
+普通用户默认把聊天记录和媒体保存在 AIOS 实例为该账号准备的本地目录；没有远程服务器时，聊天不会因为缺少远程配置而失效。用户配置并测试自己的 SSH 服务器后，可以在“我的账号 → 执行服务器”选择是否迁移已有聊天和媒体。迁移会先复制并回读校验，失败不会删除本地源数据；选择继续本地时也不会自动迁移。远程模式下的新媒体和聊天备份写入该用户专属远程目录，部署端只保留账号/索引和运行所需元数据。
+
+Regular users keep chat history and media in their account directory on the AIOS deployment by default; remote execution is optional and is not required for chat. After configuring and testing their own SSH server, users can choose whether to migrate existing chat/media data. Migration verifies the remote copy before switching and never deletes the local source on failure. In remote mode, new media and chat backups are written to the user's dedicated remote directory; the AIOS deployment keeps only account/index/runtime metadata.
+
+
+## 用户存储选择
+
+没有远程服务器时，聊天记录和媒体默认保存在你的 AIOS 账号空间；配置并测试自己的执行服务器后，可在「我的账号 → 执行服务器」选择继续本地保存或迁移到自己的远程目录。迁移失败不会删除本地数据。
+
+## User storage choice
+
+Without a remote server, chat history and media stay in your AIOS account space by default. After configuring and testing your own executor, choose local storage or migration to your own remote directory. A failed migration never deletes the local source.

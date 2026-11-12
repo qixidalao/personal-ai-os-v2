@@ -2,6 +2,8 @@
 
 ## Current release
 
+- [部署架构、数据策略与容量](DEPLOYMENT-ARCHITECTURE.md)
+
 - [User guide](AIOS-使用手册.md)
 - [Connect your own execution server](AIOS-执行器接入指南.md)
 - [Remote runner image](../scripts/runner/README.md)

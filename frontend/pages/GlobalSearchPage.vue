@@ -130,19 +130,19 @@ const totalHits = computed(() => groups.value.reduce((n, g) => n + g.hits.length
 
 function loadHistory() {
   try {
-    history.value = JSON.parse(localStorage.getItem('hhs:search:history') || '[]')
+    history.value = JSON.parse(localStorage.getItem('aios:search:history') || '[]')
   } catch { history.value = [] }
 }
 
 function pushHistory(q: string) {
   const list = [q, ...history.value.filter((x) => x !== q)].slice(0, 8)
   history.value = list
-  localStorage.setItem('hhs:search:history', JSON.stringify(list))
+  localStorage.setItem('aios:search:history', JSON.stringify(list))
 }
 
 function clearHistory() {
   history.value = []
-  localStorage.removeItem('hhs:search:history')
+  localStorage.removeItem('aios:search:history')
 }
 
 function escapeHtml(s: string) {

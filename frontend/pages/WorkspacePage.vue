@@ -168,7 +168,7 @@ interface Note {
   updatedAt: number
 }
 
-const KEY = 'hhs:workspace:notes'
+const KEY = 'aios:workspace:notes'
 const notes = ref<Note[]>([])
 const activeId = ref('')
 const query = ref('')

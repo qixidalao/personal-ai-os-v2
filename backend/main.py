@@ -29,9 +29,9 @@ from backend.runs_api import router as runs_router
 from backend.auth import AuthMiddleware, router as auth_router
 from backend.approvals_api import router as approvals_router
 from backend.executor_api import router as executor_router
+from backend.device_api import router as device_router
 from backend.tts_api import router as tts_router
 from backend.middleware.logging import RequestLoggingMiddleware
-from backend.onebot import router as onebot_router, register_event_handlers, OneBotChatWorker
 
 
 @asynccontextmanager
@@ -69,11 +69,6 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"Run 状态恢复失败: {exc}")
 
-    register_event_handlers(event_bus)
-    chat_worker = OneBotChatWorker(event_bus)
-    await chat_worker.start()
-    app.state.onebot_chat_worker = chat_worker
-    logger.info("🤖 OneBot 适配器已加载")
 
     await event_bus.emit("system.start", {"version": app.version})
     yield
@@ -136,7 +131,6 @@ def create_app() -> FastAPI:
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(gateway_router, prefix="/api/v1/gateway")
     app.include_router(stream_router, prefix="/api/v1/stream")
-    app.include_router(onebot_router)
     app.include_router(ws_router, prefix="/ws")
     app.include_router(sessions_router)
     app.include_router(settings_router)
@@ -150,6 +144,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(approvals_router)
     app.include_router(executor_router)
+    app.include_router(device_router)
     app.include_router(tts_router)
 
     static_dir = Path("frontend/dist")

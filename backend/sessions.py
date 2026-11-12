@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime
 
 from backend.ownership import can_access_session, identity, owner_user_id, read_session_meta
+from backend.executor import remote_write_bytes, remote_storage_mode
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
 
@@ -86,10 +87,24 @@ def _read_session(session_id: str) -> SessionData:
 
 def _write_session(session_id: str, data: SessionData):
     path = _session_path(session_id)
-    path.write_text(
-        json.dumps(data.model_dump(), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    path.write_text(json.dumps(data.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+async def _sync_remote_history(request: Request, session_id: str, data: SessionData) -> None:
+    user_id, role = identity(request)
+    if role != "member":
+        return
+    mode, _root = await remote_storage_mode(user_id, role)
+    if mode != "remote":
+        return
+    payload = json.dumps(data.model_dump(), ensure_ascii=False, indent=2).encode("utf-8")
+    try:
+        result = await remote_write_bytes(user_id, role, f"conversations/{session_id}.json", payload)
+        if not result.get("ok"):
+            raise RuntimeError(result.get("stderr") or "远程同步失败")
+    except Exception:
+        # Local copy remains authoritative when remote sync fails; never lose user history.
+        return
 
 
 def _checked_session(request: Request, session_id: str) -> SessionData:
@@ -136,6 +151,7 @@ async def create_session(request: Request, meta: SessionMeta | None = None):
     meta.owner_user_id = user_id or (owner_user_id() if role == "owner" else "")
     data = SessionData(meta=meta, messages=[])
     _write_session(session_id, data)
+    await _sync_remote_history(request, session_id, data)
     return {"session": data.model_dump()}
 
 
@@ -157,6 +173,7 @@ async def update_session(request: Request, session_id: str, data: SessionData):
     # 归属不可通过接口改写
     data.meta.owner_user_id = existing.meta.owner_user_id or (user_id if role == "owner" else "")
     _write_session(session_id, data)
+    await _sync_remote_history(request, session_id, data)
     return {"status": "ok"}
 
 
@@ -178,6 +195,7 @@ async def update_messages(request: Request, session_id: str, messages: list[Mess
         last = messages[-1]
         data.meta.preview = last.content[:50] if last.content else ""
     _write_session(session_id, data)
+    await _sync_remote_history(request, session_id, data)
     return {"status": "ok"}
 
 
@@ -194,4 +212,5 @@ async def patch_session_meta(request: Request, session_id: str, meta: SessionMet
         data.meta.preview = meta.preview
     data.meta.updated_at = datetime.now().isoformat()
     _write_session(session_id, data)
+    await _sync_remote_history(request, session_id, data)
     return {"status": "ok", "meta": data.meta.model_dump()}

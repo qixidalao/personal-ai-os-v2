@@ -15,6 +15,7 @@ import os
 import re
 import shlex
 import socket
+import base64
 from pathlib import Path
 from typing import Any
 
@@ -51,17 +52,12 @@ def _known_hosts_path(user_id: str) -> Path:
 
 
 def default_config(role: str) -> dict[str, Any]:
-    if role == "owner":
-        return {
-            "mode": "local",
-            "ssh": {"host": "", "port": 22, "user": "aios", "image": "aios-runner:latest", "host_key": ""},
-            "limits": {"timeout": DEFAULT_TIMEOUT, "memory": "512m", "cpus": "1"},
-        }
-    return {
-        "mode": "disabled",
+    base = {
         "ssh": {"host": "", "port": 22, "user": "aios", "image": "aios-runner:latest", "host_key": ""},
         "limits": {"timeout": DEFAULT_TIMEOUT, "memory": "512m", "cpus": "1"},
+        "storage": {"mode": "local", "path": "~/aios-data"},
     }
+    return {"mode": "local" if role == "owner" else "disabled", **base}
 
 
 def load_config(user_id: str, role: str) -> dict[str, Any]:
@@ -73,7 +69,7 @@ def load_config(user_id: str, role: str) -> dict[str, Any]:
         except (OSError, json.JSONDecodeError):
             data = {}
         if isinstance(data, dict):
-            cfg.update({k: v for k, v in data.items() if k in ("mode", "ssh", "limits", "updated_at")})
+            cfg.update({k: v for k, v in data.items() if k in ("mode", "ssh", "limits", "storage", "updated_at")})
     return cfg
 
 
@@ -217,6 +213,42 @@ async def test_connection(user_id: str, role: str, cfg: dict[str, Any] | None = 
     )
     result["mode"] = "ssh"
     return result
+
+
+async def remote_storage_mode(user_id: str, role: str) -> tuple[str, str]:
+    cfg = load_config(user_id, role)
+    storage = cfg.get("storage") or {}
+    mode = str(storage.get("mode") or "local")
+    path = str(storage.get("path") or "~/aios-data")
+    if role != "owner" and mode == "remote" and (cfg.get("mode") or "disabled") == "ssh":
+        return "remote", path
+    return "local", path
+
+
+async def remote_write_bytes(user_id: str, role: str, relative_path: str, content: bytes, timeout: int = 60) -> dict[str, Any]:
+    mode, root = await remote_storage_mode(user_id, role)
+    if mode != "remote":
+        raise PermissionError("用户未启用远程存储")
+    safe = "/".join(part for part in relative_path.split("/") if part not in ("", ".", ".."))
+    if not safe:
+        raise ValueError("远程存储路径为空")
+    encoded = base64.b64encode(content).decode("ascii")
+    command = f"mkdir -p {shlex.quote(root.rstrip('/') + '/' + safe.rsplit('/', 1)[0] if '/' in safe else root)} && echo {shlex.quote(encoded)} | base64 -d > {shlex.quote(root.rstrip('/') + '/' + safe)}"
+    return await _ssh_exec(user_id, load_config(user_id, role), command, timeout)
+
+
+async def remote_read_bytes(user_id: str, role: str, relative_path: str, timeout: int = 60) -> bytes:
+    mode, root = await remote_storage_mode(user_id, role)
+    if mode != "remote":
+        raise PermissionError("用户未启用远程存储")
+    safe = "/".join(part for part in relative_path.split("/") if part not in ("", ".", ".."))
+    if not safe:
+        raise ValueError("远程存储路径为空")
+    command = f"base64 -w0 {shlex.quote(root.rstrip('/') + '/' + safe)}"
+    result = await _ssh_exec(user_id, load_config(user_id, role), command, timeout)
+    if not result.get("ok"):
+        raise FileNotFoundError(result.get("stderr") or "远程文件不存在")
+    return base64.b64decode(result.get("stdout", ""), validate=False)
 
 
 async def run_remote(user_id: str, role: str, command: str, timeout: int | None = None) -> dict[str, Any]:

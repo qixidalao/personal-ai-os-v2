@@ -5,9 +5,9 @@ import os, subprocess, tempfile
 from pathlib import Path
 from tools import ToolRegistry
 from tools.media import MEDIA_DIR, send_image
-DEFAULT_PYTHON = os.getenv("HHS_REALESRGAN_PYTHON", "")
-DEFAULT_REPO = os.getenv("HHS_REALESRGAN_REPO", "")
-DEFAULT_MODEL = os.getenv("HHS_REALESRGAN_MODEL", "")
+DEFAULT_PYTHON = os.getenv("AIOS_REALESRGAN_PYTHON", "")
+DEFAULT_REPO = os.getenv("AIOS_REALESRGAN_REPO", "")
+DEFAULT_MODEL = os.getenv("AIOS_REALESRGAN_MODEL", "")
 _RUNNER = r"""
 import cv2, sys, torch
 repo, source, destination, model_path, amount = sys.argv[1:]
@@ -34,7 +34,7 @@ def enhance_image_file(source: str | Path, blend_strength: float=0.3) -> Path:
     source=Path(source).expanduser().resolve()
     if not source.is_file(): raise FileNotFoundError(f"图片不存在: {source}")
     if not 0.1<=float(blend_strength)<=0.65: raise ValueError("blend_strength 必须在 0.1 到 0.65 之间")
-    python=Path(os.getenv("HHS_REALESRGAN_PYTHON",DEFAULT_PYTHON)); repo=Path(os.getenv("HHS_REALESRGAN_REPO",DEFAULT_REPO)); model=Path(os.getenv("HHS_REALESRGAN_MODEL",DEFAULT_MODEL))
+    python=Path(os.getenv("AIOS_REALESRGAN_PYTHON",DEFAULT_PYTHON)); repo=Path(os.getenv("AIOS_REALESRGAN_REPO",DEFAULT_REPO)); model=Path(os.getenv("AIOS_REALESRGAN_MODEL",DEFAULT_MODEL))
     if not python.is_file() or not model.is_file(): raise RuntimeError("Real-ESRGAN 本地运行环境或模型文件不存在")
     MEDIA_DIR.mkdir(parents=True,exist_ok=True)
     fd,name=tempfile.mkstemp(prefix="enhanced-",suffix=".jpg",dir=MEDIA_DIR); os.close(fd); output=Path(name)

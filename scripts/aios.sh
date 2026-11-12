@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════
-# Personal AI OS (hhs) — 快捷启动/重启脚本
+# Personal AI OS — 快捷启动/重启脚本
 # 用法:
-#   ./scripts/hhs.sh           启动服务
-#   ./scripts/hhs.sh restart   重启服务（自动杀端口+重新构建+启动）
-#   ./scripts/hhs.sh stop      停止服务
-#   ./scripts/hhs.sh rebuild   只重新构建前端（不启停服务）
-#   ./scripts/hhs.sh status    查看服务状态和日志尾巴
+#   ./scripts/aios.sh           启动服务
+#   ./scripts/aios.sh restart   重启服务（自动杀端口+重新构建+启动）
+#   ./scripts/aios.sh stop      停止服务
+#   ./scripts/aios.sh rebuild   只重新构建前端（不启停服务）
+#   ./scripts/aios.sh status    查看服务状态和日志尾巴
 # ═══════════════════════════════════════════════════════════
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-PORT="${HHS_PORT:-8080}"
-LOG_FILE="/tmp/hhs.log"
-PID_FILE="/tmp/hhs.pid"
-NODE_BIN="${HHS_NODE_BIN:-$(command -v node || true)}"
-PYTHON_BIN="${HHS_PYTHON_BIN:-$(command -v python3 || command -v python || true)}"
-HOST="${HHS_HOST:-127.0.0.1}"
+PORT="${AIOS_PORT:-8080}"
+LOG_FILE="/tmp/aios.log"
+PID_FILE="/tmp/aios.pid"
+NODE_BIN="${AIOS_NODE_BIN:-$(command -v node || true)}"
+PYTHON_BIN="${AIOS_PYTHON_BIN:-$(command -v python3 || command -v python || true)}"
+HOST="${AIOS_HOST:-127.0.0.1}"
 
 if [ -x "$SCRIPT_DIR/.venv/bin/python" ]; then
   PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python"
 fi
 if [ -z "$PYTHON_BIN" ]; then
-  echo "[hhs] Python 3.11+ not found. Install Python or set HHS_PYTHON_BIN." >&2
+  echo "[aios] Python 3.11+ not found. Install Python or set AIOS_PYTHON_BIN." >&2
   exit 1
 fi
 
@@ -36,7 +36,7 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-info()  { echo -e "${CYAN}[hhs]${NC} $1"; }
+info()  { echo -e "${CYAN}[aios]${NC} $1"; }
 ok()    { echo -e "${GREEN}[✓]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
 err()   { echo -e "${RED}[✗]${NC} $1"; }
@@ -83,11 +83,11 @@ build_frontend() {
 
 start_service() {
   if [ -n "$(find_pid_on_port)" ]; then
-    err "端口 $PORT 已被占用！先执行 ./scripts/hhs.sh restart"
+    err "端口 $PORT 已被占用！先执行 ./scripts/aios.sh restart"
     return 1
   fi
 
-  info "启动 hhs 服务 (端口 $PORT)..."
+  info "启动 AIOS 服务 (端口 $PORT)..."
 
   # 后台启动，把 PID 记下来
   nohup "$PYTHON_BIN" -m uvicorn backend.main:app \
@@ -114,11 +114,11 @@ start_service() {
 
 start_service_dev() {
   if [ -n "$(find_pid_on_port)" ]; then
-    err "端口 $PORT 已被占用！先执行 ./scripts/hhs.sh stop"
+    err "端口 $PORT 已被占用！先执行 ./scripts/aios.sh stop"
     return 1
   fi
 
-  info "启动 hhs 服务 (前台模式, 端口 $PORT)..."
+  info "启动 AIOS 服务 (前台模式, 端口 $PORT)..."
   echo ""
   echo "  📍  http://$HOST:$PORT"
   echo "  ⌨️  按 Ctrl+C 停止服务"
@@ -161,7 +161,7 @@ show_status() {
   fi
 
   if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-    ok "hhs 服务运行中 (PID $pid, 端口 $PORT)"
+    ok "AIOS 服务运行中 (PID $pid, 端口 $PORT)"
     echo ""
     echo "  📍  http://$HOST:$PORT"
     echo "  🕒  启动时间: $(ps -o lstart= -p "$pid" 2>/dev/null || echo '未知')"
@@ -171,7 +171,7 @@ show_status() {
     echo ""
     echo "  查看全部日志: tail -f $LOG_FILE"
   else
-    warn "hhs 服务未运行"
+    warn "AIOS 服务未运行"
     if [ -f "$LOG_FILE" ] && [ -s "$LOG_FILE" ]; then
       echo ""
       echo "  ── 上次运行日志最后几行 ──"
@@ -194,7 +194,7 @@ case "${1:-start}" in
     start_service_dev
     ;;
   restart)
-    info "===== 重启 hhs 服务 ====="
+    info "===== 重启 AIOS 服务 ====="
     stop_service
     build_frontend || warn "前端构建跳过"
     start_service

@@ -160,7 +160,7 @@ interface Persona {
   active?: boolean
 }
 
-const KEY = 'hhs:personas'
+const KEY = 'aios:personas'
 const router = useRouter()
 const createChat = inject<any>('createChat', null)
 
@@ -276,7 +276,7 @@ async function applyToPrompts(p: Persona) {
 }
 
 function chatWith(p: Persona) {
-  localStorage.setItem('hhs:prefill', p.systemPrompt)
+  localStorage.setItem('aios:prefill', p.systemPrompt)
   if (createChat) createChat()
   else router.push('/chat')
 }

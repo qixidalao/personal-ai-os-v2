@@ -281,7 +281,7 @@ const theme = ref<'dark' | 'light'>('dark')
 function applyTheme(next: 'dark' | 'light') {
   theme.value = next
   document.documentElement.dataset.theme = next
-  localStorage.setItem('hhs-theme', next)
+  localStorage.setItem('aios-theme', next)
   const meta = document.querySelector('meta[name="theme-color"]')
   if (meta) meta.setAttribute('content', next === 'dark' ? '#0b0d12' : '#f5f6f9')
 }
@@ -322,15 +322,15 @@ const navGroups = NAV_GROUPS
 const navFooter = NAV_FOOTER
 
 /* 侧栏折叠 / 上下文坞：持久化到 localStorage */
-const navCollapsed = ref(localStorage.getItem('hhs-nav-collapsed') === '1')
-const dockOpen = ref(localStorage.getItem('hhs-dock-open') === '1')
+const navCollapsed = ref(localStorage.getItem('aios-nav-collapsed') === '1')
+const dockOpen = ref(localStorage.getItem('aios-dock-open') === '1')
 function toggleNav() {
   navCollapsed.value = !navCollapsed.value
-  try { localStorage.setItem('hhs-nav-collapsed', navCollapsed.value ? '1' : '0') } catch { /* ignore */
+  try { localStorage.setItem('aios-nav-collapsed', navCollapsed.value ? '1' : '0') } catch { /* ignore */
   /* 中文：忽略 */ }
 }
 watch(dockOpen, (v) => {
-  try { localStorage.setItem('hhs-dock-open', v ? '1' : '0') } catch { /* ignore */
+  try { localStorage.setItem('aios-dock-open', v ? '1' : '0') } catch { /* ignore */
   /* 中文：忽略 */ }
 })
 
@@ -590,7 +590,7 @@ async function loadModels() {
     if (allModels.length > 0) {
       models.value = allModels
       let savedModel = ''
-      try { savedModel = localStorage.getItem('hhs-model') || '' } catch { /* ignore */
+      try { savedModel = localStorage.getItem('aios-model') || '' } catch { /* ignore */
       /* 中文：忽略 */ }
       if (!currentModel.value || !allModels.includes(currentModel.value)) {
         currentModel.value = savedModel && allModels.includes(savedModel) ? savedModel : allModels[0]
@@ -608,7 +608,7 @@ async function loadModels() {
 /* 模型选择持久化：刷新后仍用上次选的模型（多模态时不会掉回纯文本模型） */
 watch(currentModel, (m) => {
   if (!m) return
-  try { localStorage.setItem('hhs-model', m) } catch { /* ignore */
+  try { localStorage.setItem('aios-model', m) } catch { /* ignore */
   /* 中文：忽略 */ }
 })
 
@@ -655,7 +655,7 @@ function onKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   const urlTheme = new URLSearchParams(window.location.search).get('theme')
-  const saved = urlTheme || localStorage.getItem('hhs-theme')
+  const saved = urlTheme || localStorage.getItem('aios-theme')
   applyTheme(saved === 'light' ? 'light' : 'dark')
   window.addEventListener('resize', onResize)
   window.addEventListener('keydown', onKeydown)

@@ -81,7 +81,7 @@ function toggleTheme() {
   const next = cur === 'dark' ? 'light' : 'dark'
   document.documentElement.classList.add('theme-switching')
   document.documentElement.dataset.theme = next
-  localStorage.setItem('hhs-theme', next)
+  localStorage.setItem('aios-theme', next)
   window.setTimeout(() => document.documentElement.classList.remove('theme-switching'), 300)
 }
 
@@ -96,7 +96,7 @@ const commands = computed<Cmd[]>(() => [
   { id: 'history', label: '历史记录', hint: 'Ctrl 4', icon: History, group: '前往', run: go('/history') },
   { id: 'search', label: '全局搜索', hint: 'Ctrl F', icon: Search, group: '前往', run: go('/search') },
   { id: 'settings', label: '设置', icon: Settings, group: '前往', run: go('/settings') },
-  { id: 'new-chat', label: '新建对话', icon: Plus, group: '动作', run: () => { router.push('/chat'); window.dispatchEvent(new CustomEvent('hhs:new-chat')) } },
+  { id: 'new-chat', label: '新建对话', icon: Plus, group: '动作', run: () => { router.push('/chat'); window.dispatchEvent(new CustomEvent('aios:new-chat')) } },
   { id: 'theme', label: '切换亮色 / 暗色主题', icon: Sun, group: '动作', run: toggleTheme },
   { id: 'pick-model', label: '切换模型', icon: Sparkles, group: '动作', run: () => { router.push('/settings') } },
 ])

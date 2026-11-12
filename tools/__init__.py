@@ -16,7 +16,7 @@ P0 工具契约层
 --------
 * ``@ToolRegistry.register("name", "desc", "category")`` 用法保持不变；
 * ``ToolSpec.parameters`` 属性继续返回 ``input_schema``，
-  供 ``backend/settings_api.py``、``backend/onebot/adapter.py`` 等旧代码读取；
+  供 ``backend/settings_api.py``、``AIOS runtime adapters`` 等旧代码读取；
 * ``ToolSpec(parameters=...)`` 旧式构造继续可用。
 
 jsonschema 是可选依赖：已安装（>=4.x 的 Draft 2020-12 校验器）时使用标准校验，
@@ -346,7 +346,7 @@ class ToolSpec:
     ``max_output_bytes``（字节）、``handler``、``enabled``。
 
     兼容字段/属性：``parameters``（= ``input_schema``）、``schema`` 别名，
-    以兼容旧代码（settings_api / onebot adapter）与旧测试。
+    以兼容旧代码（settings_api）与旧测试。
     """
 
     def __init__(

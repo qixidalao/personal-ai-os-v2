@@ -487,14 +487,16 @@ class AuthMiddleware:
         path = scope.get("path", "/")
         if path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES):
             return await self.app(scope, receive, send)
+        # The outbound local-device agent authenticates with its own device token.
+        # The device route performs ownership/revocation validation.
+        if path.startswith("/api/v1/devices/agent/"):
+            return await self.app(scope, receive, send)
         if is_local_access(scope):
             return await self.app(scope, receive, send)
 
         session = session_from_scope(scope)
         token_ok = _bearer_ok(scope)
         if scope["type"] == "websocket":
-            if path == "/ws/onebot" and is_local_access(scope):
-                return await self.app(scope, receive, send)
             if not (session or token_ok):
                 await send({"type": "websocket.close", "code": 4401})
                 return

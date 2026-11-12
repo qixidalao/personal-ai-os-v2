@@ -9,41 +9,37 @@ from __future__ import annotations
 import mimetypes
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse, Response
 from fastapi import UploadFile, File
 import base64
 import tempfile
 import uuid
 import io
 
-from tools.media import MEDIA_DIR, MAX_IMAGE_BYTES, get_media_record, send_image
+from tools.media import MEDIA_DIR, MAX_IMAGE_BYTES, get_media_record, send_image, save_user_media, read_user_media
+from backend.ownership import identity
 
 router = APIRouter(prefix="/api/v1/media", tags=["media"])
                                                  # 中文：媒体
 
 
 @router.get("/{media_id}", name="get_media")
-async def get_media(media_id: str):
-    record = get_media_record(media_id)
+async def get_media(media_id: str, request: Request):
+    user_id, role = identity(request)
+    record = get_media_record(media_id, user_id=user_id, role=role)
     if not record:
-        raise HTTPException(status_code=404, detail="图片不存在")
-    path = Path(record["path"])
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="图片文件已丢失")
-    media_type = record.get("mime") or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    return FileResponse(
-        path,
-        media_type=media_type,
-        filename=record.get("name") or path.name,
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
-    )
-
+        raise HTTPException(status_code=404, detail="媒体不存在")
+    try:
+        content = await read_user_media(user_id, role, record)
+    except Exception:
+        raise HTTPException(status_code=404, detail="媒体文件不存在或远程存储不可用")
+    media_type = record.get("mime") or mimetypes.guess_type(record.get("name") or "")[0] or "application/octet-stream"
+    return Response(content=content, media_type=media_type, headers={"Cache-Control":"private, no-store"})
 
 @router.get("")
 async def media_status():
-    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-    return {"ok": True, "transport": "url", "directory": str(MEDIA_DIR.resolve())}
+    return {"ok": True, "transport": "configured-storage"}
 
 SUPPORTED_IMAGE_MIME = {
     "image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg",
@@ -68,12 +64,12 @@ def _normalize_image(content: bytes, mime: str) -> tuple[bytes, str]:
 
 
 @router.post("/upload")
-async def upload_image(file: UploadFile = File(...)):
+async def upload_image(request: Request, file: UploadFile = File(...)):
     """Chat 图片上传：落盘存储 + 返回可展示的 media URL 与给视觉模型的 data URL。
 
     之前只返回 data URL(base64)：用户发的图无法回显，且几 MB base64 会直接写进会话历史。
-    现在图片统一进 storage/media（经 send_image 索引），历史里只存 /api/v1/media/<id>，
-    只有真正请求模型时才转回 data URL。
+    普通用户按账号存储策略保存：默认账号空间，选择远程后写入用户自己的远程服务器；
+    图片字节只在请求期间临时用于模型输入，不共享给其他账号。
     """
     content = await file.read()
     if not content:
@@ -85,21 +81,13 @@ async def upload_image(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="只支持上传图片")
 
     content, mime = _normalize_image(content, mime)
-
-    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-    temp_name = None
+    user_id, role = identity(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     try:
-        with tempfile.NamedTemporaryFile(prefix="chat-upload-", suffix=SUPPORTED_IMAGE_MIME.get(mime, ".png"),
-                                         dir=MEDIA_DIR, delete=False) as tmp:
-            tmp.write(content)
-            temp_name = tmp.name
-        record = send_image(temp_name, caption="")
-    finally:
-        if temp_name:
-            try:
-                Path(temp_name).unlink(missing_ok=True)
-            except OSError:
-                pass
+        record = await save_user_media(user_id, role, file.filename or "upload", mime, content)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"保存媒体失败：{exc}") from exc
 
     return {
         "media_id": record.get("media_id", ""),
@@ -108,6 +96,8 @@ async def upload_image(file: UploadFile = File(...)):
         "type": mime,
         "size": len(content),
         "name": record.get("name") or file.filename or "",
+        "persistent": True,
+        "storage": record.get("storage", "local"),
     }
 
 

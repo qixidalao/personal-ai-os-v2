@@ -81,3 +81,31 @@ ssh-keyscan -p 22 你的公网IP
 | 普通账号配置被拒绝 | 只能填写公网目标，不能填本机、内网或元数据地址 |
 
 修改或重装服务器后，重新验证并更新指纹；停止使用时，在 AIOS 将执行方式切换为「不启用」，并从服务器移除该账号的公钥。
+
+
+## 用户存储选择
+
+没有远程服务器时，聊天记录和媒体默认保存在你的 AIOS 账号空间；配置并测试自己的执行服务器后，可在「我的账号 → 执行服务器」选择继续本地保存或迁移到自己的远程目录。迁移失败不会删除本地数据。
+
+## User storage choice
+
+Without a remote server, chat history and media stay in your AIOS account space by default. After configuring and testing your own executor, choose local storage or migration to your own remote directory. A failed migration never deletes the local source.
+
+
+## 使用本机设备（Windows / macOS / Linux）
+
+SSH 地址中的 `127.0.0.1` 指向 AIOS 服务器，不是你的电脑，因此不能直接填写。要让自己的电脑成为执行器：
+
+1. 在 AIOS「我的账号 → 执行服务器」选择「使用我的本机设备」；
+2. 点击「生成配对码」；
+3. 在自己的 Windows/macOS/Linux 设备下载仓库的 `scripts/aios-agent.py`，运行：
+
+```bash
+python scripts/aios-agent.py pair --server https://你的AIOS地址 --code 6位配对码
+python scripts/aios-agent.py run
+```
+
+4. 设备端每个任务默认要求本机用户确认；确认后才执行；
+5. AIOS 页面会显示设备在线状态，可随时撤销。
+
+Agent 主动连接 AIOS，不需要用户设备公网 IP、端口转发或 SSH 入站。Windows、macOS、Linux 支持 Python Agent。Android 目前只能在前台手动运行 Python Agent，不承诺后台常驻；iOS 和鸿蒙暂未提供 Agent，不宣称支持。\n

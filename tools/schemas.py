@@ -41,7 +41,7 @@ PERMISSION_VALUES: tuple[str, ...] = ("fs_read", "fs_write", "exec", "net", "med
                                                                             # 中文：媒体
 
 _P_ABS_OR_REL = (
-    "支持绝对路径（WSL/Linux 下形如 /home/qixi/...）或相对于项目根目录的相对路径；"
+    "支持绝对路径（WSL/Linux 下形如 /home/user/...）或相对于项目根目录的相对路径；"
 )
 
 SCHEMAS: dict[str, dict[str, Any]] = {

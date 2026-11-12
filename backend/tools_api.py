@@ -316,41 +316,6 @@ async def call_tool(payload: ToolCallCompatRequest):
             "time": datetime.now().isoformat(),
         }
 
-# ─── OneBot 发送消息 ──────────────────────────────────────
-@router.post("/onebot/send")
-async def onebot_send(data: dict):
-    """发送 QQ 消息（通过已连接的 NapCat）。"""
-    from backend.onebot.adapter import _napcat_ws, send_group_msg, send_private_msg
-
-    if _napcat_ws is None:
-        raise HTTPException(status_code=503, detail="NapCat 未连接")
-
-    msg_type = data.get("type", "private")
-    message = data.get("message", "")
-    try:
-        if msg_type == "group":
-            group_id = data.get("group_id")
-            if not group_id:
-                raise HTTPException(status_code=400, detail="group_id 必填")
-            await send_group_msg(_napcat_ws, group_id, message)
-            return {"status": "ok", "sent_to": f"group:{group_id}"}
-
-        user_id = data.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id 必填")
-        await send_private_msg(_napcat_ws, user_id, message)
-        return {"status": "ok", "sent_to": f"user:{user_id}"}
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-# ============================================================================
-# Spill 溢出存储 API（借鉴 DeepSeek Harness spill 机制）
-# 超长工具结果落盘后，前端/用户按定位符读取完整内容
-# ============================================================================
-
 @router.get("/spills/{session_id}/{filename}")
 async def read_spill(session_id: str, filename: str):
     """按定位符读取溢出存储的完整工具结果。

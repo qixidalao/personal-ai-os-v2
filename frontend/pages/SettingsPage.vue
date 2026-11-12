@@ -626,7 +626,7 @@
                 <div>
                   <h2 class="ui-section-title">{{ isAdmin ? '远程执行器（BYO）' : '执行服务器' }}</h2>
                   <p class="ui-section-sub">
-                    把 AI 的代码执行放到你自己的服务器上，不占用 AIOS 本机。没有服务器可以不启用。
+                    选择公网 SSH 服务器，或在自己的电脑运行 AIOS Agent 主动连接。普通账号不会在 AIOS 主机执行代码。
                   </p>
                 </div>
                 <div class="ui-section-actions">
@@ -647,6 +647,19 @@
                 </div>
               </div>
 
+              <div v-if="!isOwner" class="acct-field">
+                <div class="acct-label-row"><span class="acct-label">我的持久数据存放位置</span></div>
+                <Dropdown :items="storageModeOptions" :label="storageModeLabel" @select="onSelectStorageMode" class="acct-dropdown" />
+                <div class="acct-tip">默认保存在 AIOS 实例的账号目录；选择远程后，聊天记录与媒体写到你自己的服务器。配置 SSH 后可选择迁移已有数据。</div>
+              </div>
+              <div v-if="showStorageMigration" class="acct-tip acct-tip--choice">
+                发现已有聊天记录/媒体。是否现在复制到你的远程服务器？本地源数据会保留，远程复制成功后才切换存储。
+                <div class="acct-actions">
+                  <button class="acct-btn" :disabled="storageBusy" @click="migrateStorage">{{ storageBusy ? '迁移中…' : '迁移并切换' }}</button>
+                  <button class="acct-btn acct-btn--ghost" :disabled="storageBusy" @click="keepLocalStorage">继续保存在本机</button>
+                </div>
+                <span v-if="storageMsg">{{ storageMsg }}</span>
+              </div>
               <div class="acct-field">
                 <div class="acct-label-row">
                   <span class="acct-label">服务器地址</span>
@@ -704,6 +717,24 @@
               </div>
               <p v-if="executorMsg" class="acct-msg">{{ executorMsg }}</p>
               <pre v-if="executorPublicKey" class="acct-key">{{ executorPublicKey }}</pre>
+
+              <template v-if="executorMode === 'device'">
+                <div class="acct-field device-pair">
+                  <div class="acct-label-row"><span class="acct-label">配对本机设备</span></div>
+                  <p class="acct-hint">支持 Windows/macOS/Linux：在目标设备安装 Python Agent，输入一次性配对码后保持 Agent 运行。每个任务默认需要本机确认；设备关机或 Agent 退出时不可执行。Android 目前需前台运行；iOS/鸿蒙暂不支持。</p>
+                  <div class="acct-actions">
+                    <button class="acct-btn" :disabled="deviceBusy" @click="createDevicePairing">生成配对码</button>
+                    <code v-if="pairingCode" class="device-pair-code">{{ pairingCode }}</code>
+                  </div>
+                  <p v-if="pairingError" class="acct-msg">{{ pairingError }}</p>
+                </div>
+                <div v-if="pairedDevices.length" class="device-list">
+                  <div v-for="d in pairedDevices" :key="d.device_id" class="device-row">
+                    <span>{{ d.name }} · {{ d.platform }} · {{ d.online ? '在线' : '离线' }}</span>
+                    <button class="acct-btn acct-btn--ghost" :disabled="deviceBusy" @click="revokeDevice(d.device_id)">撤销</button>
+                  </div>
+                </div>
+              </template>
             </section>
           </div>
 
@@ -1050,9 +1081,20 @@ const securityRateLimit = ref(true)
 const securityMsg = ref('')
 const securityBusy = ref(false)
 const executorMode = ref('disabled')
+const storageMode = ref('local')
+const storageModeOptions = [
+  { label: '保存在 AIOS 账号空间（默认）', value: 'local', desc: '由部署者的 AIOS 实例保管' },
+  { label: '保存在我的远程服务器', value: 'remote', desc: '聊天记录与媒体复制到你自己的服务器' },
+]
+const storageModeLabel = computed(() => storageModeOptions.find(o => o.value === storageMode.value)?.label || storageModeOptions[0].label)
+const showStorageMigration = ref(false)
+const storageBusy = ref(false)
+const storageMsg = ref('')
+const previousStorageMode = ref('local')
 const executorModeOptions = computed(() => [
   { label: '不启用（普通权限）', value: 'disabled', desc: '只聊天 / 自己的会话，不执行工具' },
-  { label: '使用我的服务器', value: 'ssh', desc: 'AI 的代码在你自己的服务器上运行' },
+  { label: '我的公网服务器（SSH）', value: 'ssh', desc: 'AIOS 通过 SSH 连接服务器' },
+  { label: '我的本机设备（Agent）', value: 'device', desc: '设备主动连接 AIOS，不需要公网 IP' },
   ...(isAdmin.value ? [{ label: '使用本机（管理员）', value: 'local', desc: '在本机执行' }] : []),
 ])
 const executorModeLabel = computed(() => executorModeOptions.value.find(o => o.value === executorMode.value)?.label || '不启用（普通权限）')
@@ -1090,6 +1132,10 @@ const executorPort = ref(22)
 const executorUser = ref('aios')
 const executorImage = ref('aios-runner:latest')
 const executorHostKey = ref('')
+const pairedDevices = ref<any[]>([])
+const pairingCode = ref('')
+const pairingError = ref('')
+const deviceBusy = ref(false)
 const executorPublicKey = ref('')
 const executorMsg = ref('')
 const executorBusy = ref(false)
@@ -1145,7 +1191,6 @@ const apiGroups = [
   { title: '📎 其他', items: [
     { path: 'GET /api/v1/health', desc: '健康检查（公开）' },
     { path: 'GET /api/v1/runs', desc: 'Run 审计（按归属过滤）' },
-    { path: 'WS /ws/onebot', desc: 'OneBot 反向 WebSocket（本机）' },
   ]},
 ]
 const specialThanks = ['Termux 社区', 'FastAPI', 'Vue.js', 'OpenAI', 'DeepSeek']
@@ -1473,19 +1518,19 @@ function loadTtsVoices() {
     ...voices.map(v => ({ label: `${v.name} · ${v.lang}`, value: v.voiceURI || v.name })),
   ]
   try {
-    ttsVoice.value = localStorage.getItem('hhs-tts-voice') || ''
-    ttsSource.value = localStorage.getItem('hhs-tts-source') || 'system'
-    ttsApiType.value = localStorage.getItem('hhs-tts-api-type') || 'openai'
-    ttsEndpoint.value = localStorage.getItem('hhs-tts-endpoint') || ''
-    ttsKey.value = localStorage.getItem('hhs-tts-key') || ''
-    ttsModel.value = localStorage.getItem('hhs-tts-model') || ''
-    ttsVoiceId.value = localStorage.getItem('hhs-tts-voice-id') || ''
-    ttsRefUrl.value = localStorage.getItem('hhs-tts-ref') || ''
-    ttsRefName.value = localStorage.getItem('hhs-tts-ref-name') || ''
-    ttsInstruction.value = localStorage.getItem('hhs-tts-instruction') || ''
-    ttsUseRef.value = localStorage.getItem('hhs-tts-use-ref') === '1'
-    ttsRate.value = Number(localStorage.getItem('hhs-tts-rate') || '1') || 1
-    ttsPitch.value = Number(localStorage.getItem('hhs-tts-pitch') || '1') || 1
+    ttsVoice.value = localStorage.getItem('aios-tts-voice') || ''
+    ttsSource.value = localStorage.getItem('aios-tts-source') || 'system'
+    ttsApiType.value = localStorage.getItem('aios-tts-api-type') || 'openai'
+    ttsEndpoint.value = localStorage.getItem('aios-tts-endpoint') || ''
+    ttsKey.value = localStorage.getItem('aios-tts-key') || ''
+    ttsModel.value = localStorage.getItem('aios-tts-model') || ''
+    ttsVoiceId.value = localStorage.getItem('aios-tts-voice-id') || ''
+    ttsRefUrl.value = localStorage.getItem('aios-tts-ref') || ''
+    ttsRefName.value = localStorage.getItem('aios-tts-ref-name') || ''
+    ttsInstruction.value = localStorage.getItem('aios-tts-instruction') || ''
+    ttsUseRef.value = localStorage.getItem('aios-tts-use-ref') === '1'
+    ttsRate.value = Number(localStorage.getItem('aios-tts-rate') || '1') || 1
+    ttsPitch.value = Number(localStorage.getItem('aios-tts-pitch') || '1') || 1
     if (ttsApiType.value === 'mimo' && ttsSource.value === 'thirdparty') {
       if (!MIMO_MODELS.includes(ttsModel.value)) ttsModel.value = 'mimo-v2.5-tts'
       if (!ttsVoiceId.value) ttsVoiceId.value = 'mimo_default'
@@ -1502,7 +1547,7 @@ function loadTtsVoices() {
 
 function onSelectTtsApiType(item: any) {
   ttsApiType.value = item.value
-  try { localStorage.setItem('hhs-tts-api-type', item.value) } catch { /* ignore */ }
+  try { localStorage.setItem('aios-tts-api-type', item.value) } catch { /* ignore */ }
   if (item.value === 'openai') maybeLoadTtsVoices()
   if (item.value === 'mimo') {
     if (!MIMO_MODELS.includes(ttsModel.value)) ttsModel.value = 'mimo-v2.5-tts'
@@ -1512,7 +1557,7 @@ function onSelectTtsApiType(item: any) {
 
 function onSelectTtsApiVoice(item: any) {
   ttsVoiceId.value = item.value
-  try { localStorage.setItem('hhs-tts-voice-id', item.value) } catch { /* ignore */ }
+  try { localStorage.setItem('aios-tts-voice-id', item.value) } catch { /* ignore */ }
 }
 
 let ttsVoiceTimer: ReturnType<typeof setTimeout> | null = null
@@ -1548,12 +1593,12 @@ async function loadTtsApiVoices() {
 
 function onSelectTtsVoice(item: any) {
   ttsVoice.value = item.value
-  try { localStorage.setItem('hhs-tts-voice', item.value) } catch { /* ignore */ }
+  try { localStorage.setItem('aios-tts-voice', item.value) } catch { /* ignore */ }
 }
 
 function onSelectTtsSource(item: any) {
   ttsSource.value = item.value
-  try { localStorage.setItem('hhs-tts-source', item.value) } catch { /* ignore */ }
+  try { localStorage.setItem('aios-tts-source', item.value) } catch { /* ignore */ }
   if (item.value === 'thirdparty' && ttsApiType.value === 'openai') maybeLoadTtsVoices()
 }
 
@@ -1568,7 +1613,7 @@ async function uploadTtsRef(e: Event) {
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`)
     ttsRefUrl.value = d.url || ''
     ttsRefName.value = d.name || file.name
-    try { localStorage.setItem('hhs-tts-ref', ttsRefUrl.value); localStorage.setItem('hhs-tts-ref-name', ttsRefName.value) } catch { /* ignore */ }
+    try { localStorage.setItem('aios-tts-ref', ttsRefUrl.value); localStorage.setItem('aios-tts-ref-name', ttsRefName.value) } catch { /* ignore */ }
     ttsMsg.value = '参考音频已上传'
   } catch (err: any) { ttsMsg.value = `上传失败：${err?.message || err}` }
   finally { ttsBusy.value = false }
@@ -1620,16 +1665,16 @@ async function testTts() {
 
 watch([ttsRate, ttsPitch, ttsSource, ttsApiType, ttsEndpoint, ttsKey, ttsModel, ttsVoiceId, ttsUseRef, ttsInstruction], () => {
   try {
-    localStorage.setItem('hhs-tts-rate', String(ttsRate.value))
-    localStorage.setItem('hhs-tts-pitch', String(ttsPitch.value))
-    localStorage.setItem('hhs-tts-source', ttsSource.value)
-    localStorage.setItem('hhs-tts-api-type', ttsApiType.value)
-    localStorage.setItem('hhs-tts-endpoint', ttsEndpoint.value)
-    localStorage.setItem('hhs-tts-key', ttsKey.value)
-    localStorage.setItem('hhs-tts-model', ttsModel.value)
-    localStorage.setItem('hhs-tts-voice-id', ttsVoiceId.value)
-    localStorage.setItem('hhs-tts-use-ref', ttsUseRef.value ? '1' : '0')
-    localStorage.setItem('hhs-tts-instruction', ttsInstruction.value)
+    localStorage.setItem('aios-tts-rate', String(ttsRate.value))
+    localStorage.setItem('aios-tts-pitch', String(ttsPitch.value))
+    localStorage.setItem('aios-tts-source', ttsSource.value)
+    localStorage.setItem('aios-tts-api-type', ttsApiType.value)
+    localStorage.setItem('aios-tts-endpoint', ttsEndpoint.value)
+    localStorage.setItem('aios-tts-key', ttsKey.value)
+    localStorage.setItem('aios-tts-model', ttsModel.value)
+    localStorage.setItem('aios-tts-voice-id', ttsVoiceId.value)
+    localStorage.setItem('aios-tts-use-ref', ttsUseRef.value ? '1' : '0')
+    localStorage.setItem('aios-tts-instruction', ttsInstruction.value)
   } catch { /* ignore */ }
 })
 
@@ -1736,7 +1781,10 @@ async function loadExecutor() {
     executorPort.value = cfg.ssh?.port || 22
     executorUser.value = cfg.ssh?.user || 'aios'
     executorImage.value = cfg.ssh?.image || 'aios-runner:latest'
+    storageMode.value = cfg.storage?.mode || 'local'
+    previousStorageMode.value = storageMode.value
     isOwner.value = data.role === 'owner'
+    if (executorMode.value === 'device') await loadPairedDevices()
   } catch (e: any) { executorMsg.value = `读取执行器配置失败：${e?.message || e}` }
 }
 
@@ -1749,13 +1797,85 @@ async function saveExecutor() {
         mode: executorMode.value,
         ssh: { host: executorHost.value, port: Number(executorPort.value) || 22, user: executorUser.value,
                image: executorImage.value, host_key: executorHostKey.value },
+        storage: { mode: storageMode.value, path: '~/aios-data' },
       }),
     })
     const d = await r.json().catch(() => ({}))
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`)
+    const wasRemote = previousStorageMode.value === 'remote'
+    previousStorageMode.value = storageMode.value
     executorMsg.value = '已保存'
+    if (!isOwner.value && storageMode.value === 'remote' && !wasRemote) showStorageMigration.value = true
   } catch (e: any) { executorMsg.value = `保存失败：${e?.message || e}` }
   finally { executorBusy.value = false }
+}
+
+function onSelectStorageMode(item: any) {
+  const old = storageMode.value
+  storageMode.value = item.value
+  if (item.value === 'remote' && old !== 'remote') showStorageMigration.value = true
+}
+
+async function migrateStorage() {
+  storageBusy.value = true; storageMsg.value = ''
+  try {
+    const r = await fetch(`${API}/api/v1/executor/storage/migrate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'migrate' }),
+    })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`)
+    storageMsg.value = '远程存储已启用；本机原数据保留作为备份。'
+    storageMode.value = d.mode || 'remote'
+    previousStorageMode.value = storageMode.value
+    showStorageMigration.value = false
+  } catch (e: any) {
+    storageMsg.value = `未切换存储，本地数据未改动：${e?.message || e}`
+    storageMode.value = 'local'
+    previousStorageMode.value = 'local'
+  } finally { storageBusy.value = false }
+}
+
+async function keepLocalStorage() {
+  storageBusy.value = true
+  try {
+    const r = await fetch(`${API}/api/v1/executor/storage/migrate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'keep_local' }),
+    })
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || `HTTP ${r.status}`) }
+    storageMode.value = 'local'; previousStorageMode.value = 'local'; showStorageMigration.value = false
+    storageMsg.value = '继续使用 AIOS 账号空间，本机数据没有迁移。'
+  } catch (e: any) { storageMsg.value = e?.message || String(e) }
+  finally { storageBusy.value = false }
+}
+
+async function loadPairedDevices() {
+  try { const d = await apiGet('/api/v1/devices'); pairedDevices.value = d.devices || [] }
+  catch (e: any) { pairingError.value = e?.message || String(e) }
+}
+
+async function createDevicePairing() {
+  deviceBusy.value = true; pairingError.value = ''; pairingCode.value = ''
+  try {
+    const r = await fetch(`${API}/api/v1/devices/pairing-code`, { method: 'POST' })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`)
+    pairingCode.value = d.pairing_code
+    await loadPairedDevices()
+  } catch (e: any) { pairingError.value = `生成失败：${e?.message || e}` }
+  finally { deviceBusy.value = false }
+}
+
+async function revokeDevice(id: string) {
+  deviceBusy.value = true; pairingError.value = ''
+  try {
+    const r = await fetch(`${API}/api/v1/devices/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`)
+    await loadPairedDevices()
+  } catch (e: any) { pairingError.value = `撤销失败：${e?.message || e}` }
+  finally { deviceBusy.value = false }
 }
 
 async function testExecutor() {
@@ -2350,6 +2470,7 @@ onUnmounted(() => { window.removeEventListener('resize', onResize); if (saveTime
 .acct-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .acct-dropdown { width: 100%; }
 .acct-dropdown :deep(.ai-dropdown__trigger--label) { width: 100%; min-width: 0; }
+.acct-tip--choice { margin: 10px 0; padding: 12px; }
 .acct-doc { margin: 8px 0 14px; padding: 12px 14px; border-radius: 10px; background: rgba(0,0,0,.18);
   border: 1px solid #2a3247; font-size: 12.5px; color: #b9c1d4; line-height: 1.8; }
 .acct-doc-title { font-weight: 600; color: #e7eaf3; margin-bottom: 6px; }
@@ -2360,6 +2481,10 @@ onUnmounted(() => { window.removeEventListener('resize', onResize); if (saveTime
   background: transparent; color: #c7d2fe; font-size: 12px; cursor: pointer; }
 @media (max-width: 767px) { .acct-cols { grid-template-columns: 1fr; } }
 .acct-inline { flex: 1; min-width: 150px; height: 38px; }
+.device-pair-code{padding:7px 12px;border:1px dashed var(--primary);border-radius:8px;font:600 18px ui-monospace,monospace;letter-spacing:2px;color:var(--primary)}
+.device-list{margin-top:10px;border-top:1px solid var(--border-light)}
+.device-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--border-light);font-size:12px;color:var(--text2)}
+
 .tts-range { width: 100%; accent-color: var(--primary); }
 .tts-req { color: #f87171; font-weight: 700; margin-left: 2px; }
 .acct-help--text { width: auto; padding: 0 8px; border-radius: 6px; font-size: 11px; height: 22px; }

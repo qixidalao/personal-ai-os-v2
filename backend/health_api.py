@@ -71,7 +71,6 @@ async def system_status():
             "media": True,
             # 中文：媒体
 
-            "onebot": True,
         },
         "stats": {
             "sessions": session_count,

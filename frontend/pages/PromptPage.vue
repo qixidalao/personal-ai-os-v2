@@ -272,7 +272,7 @@ async function copy(p: Prompt) {
 }
 
 function useInChat(p: Prompt) {
-  localStorage.setItem('hhs:prefill', p.content)
+  localStorage.setItem('aios:prefill', p.content)
   router.push('/chat')
 }
 

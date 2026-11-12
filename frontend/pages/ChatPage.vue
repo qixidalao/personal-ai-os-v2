@@ -1374,19 +1374,19 @@ function _ttsConfig() {
   let source = 'system', voice = '', rate = 1, pitch = 1
   let endpoint = '', key = '', model = '', voiceId = '', ref = '', useRef = false, instruction = ''
   try {
-    source = localStorage.getItem('hhs-tts-source') || 'system'
-    voice = localStorage.getItem('hhs-tts-voice') || ''
-    rate = Number(localStorage.getItem('hhs-tts-rate') || '1') || 1
-    pitch = Number(localStorage.getItem('hhs-tts-pitch') || '1') || 1
-    endpoint = localStorage.getItem('hhs-tts-endpoint') || ''
-    key = localStorage.getItem('hhs-tts-key') || ''
-    model = localStorage.getItem('hhs-tts-model') || ''
-    voiceId = localStorage.getItem('hhs-tts-voice-id') || ''
-    ref = localStorage.getItem('hhs-tts-ref') || ''
-    useRef = localStorage.getItem('hhs-tts-use-ref') === '1'
-    instruction = localStorage.getItem('hhs-tts-instruction') || ''
+    source = localStorage.getItem('aios-tts-source') || 'system'
+    voice = localStorage.getItem('aios-tts-voice') || ''
+    rate = Number(localStorage.getItem('aios-tts-rate') || '1') || 1
+    pitch = Number(localStorage.getItem('aios-tts-pitch') || '1') || 1
+    endpoint = localStorage.getItem('aios-tts-endpoint') || ''
+    key = localStorage.getItem('aios-tts-key') || ''
+    model = localStorage.getItem('aios-tts-model') || ''
+    voiceId = localStorage.getItem('aios-tts-voice-id') || ''
+    ref = localStorage.getItem('aios-tts-ref') || ''
+    useRef = localStorage.getItem('aios-tts-use-ref') === '1'
+    instruction = localStorage.getItem('aios-tts-instruction') || ''
   } catch { /* ignore */ }
-  return { source, apiType: localStorage.getItem('hhs-tts-api-type') || 'openai', voice, rate: Math.min(2, Math.max(0.5, rate)), pitch: Math.min(2, Math.max(0.5, pitch)), endpoint, key, model, voiceId, ref, useRef, instruction }
+  return { source, apiType: localStorage.getItem('aios-tts-api-type') || 'openai', voice, rate: Math.min(2, Math.max(0.5, rate)), pitch: Math.min(2, Math.max(0.5, pitch)), endpoint, key, model, voiceId, ref, useRef, instruction }
 }
 
 function _ttsText(content: string) {
@@ -1549,10 +1549,10 @@ function goPage(path: string) {
 
 function applyPrefill() {
   try {
-    const prefill = localStorage.getItem('hhs:prefill')
+    const prefill = localStorage.getItem('aios:prefill')
     if (prefill) {
       input.value = prefill
-      localStorage.removeItem('hhs:prefill')
+      localStorage.removeItem('aios:prefill')
       nextTick(() => { autoSize(); inputRef.value?.focus() })
     }
   } catch { /* ignore */
@@ -1566,7 +1566,7 @@ function onNewChatEvent() {
 onMounted(() => {
   msgBox.value?.addEventListener('click', onMsgClick)
   applyPrefill()
-  window.addEventListener('hhs:new-chat', onNewChatEvent)
+  window.addEventListener('aios:new-chat', onNewChatEvent)
   nextTick(() => {
     const box = msgBox.value
     if (box) box.scrollTop = box.scrollHeight
@@ -1574,7 +1574,7 @@ onMounted(() => {
 })
 onUnmounted(() => {
   msgBox.value?.removeEventListener('click', onMsgClick)
-  window.removeEventListener('hhs:new-chat', onNewChatEvent)
+  window.removeEventListener('aios:new-chat', onNewChatEvent)
   stopTts()
 })
 </script>

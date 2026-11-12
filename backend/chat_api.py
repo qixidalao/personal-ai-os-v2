@@ -793,17 +793,22 @@ async def _stream_events(req: ChatRequest, request_id: str, request: Request | N
                     if _role != "owner":
                         if fn_name not in ("shell_exec", "python_exec"):
                             raise PermissionError("该工具暂不支持普通账号的远程执行")
-                        from backend.executor import run_remote as _run_remote
-                        if fn_name == "shell_exec":
+                        from backend.executor import load_config as _load_exec, run_remote as _run_remote
+                        _exec_cfg = _load_exec(_uid, "member")
+                        if (_exec_cfg.get("mode") or "disabled") == "device":
+                            from backend.device_api import run_on_user_device as _run_device
+                            _device_cmd = str(fn_args.get("command") or "").strip() if fn_name == "shell_exec" else str(fn_args.get("code") or "")
+                            if fn_name == "python_exec":
+                                _device_cmd = _device_cmd
+                            _remote_result = await _run_device(_uid, str(_exec_cfg.get("device_id") or ""), _device_cmd, "shell" if fn_name == "shell_exec" else "python", int(fn_args.get("timeout",60)))
+                        elif fn_name == "shell_exec":
                             _remote_command = str(fn_args.get("command") or "").strip()
                         else:
                             _remote_command = "python3 - <<'AIOS_PYTHON\n" + str(fn_args.get("code") or "") + "\nAIOS_PYTHON"
-                        if not _remote_command:
+                        if (_exec_cfg.get("mode") or "disabled") != "device" and not _remote_command:
                             raise ValueError("执行内容为空")
-                        _remote_result = await _run_remote(
-                            _uid, "member", _remote_command,
-                            timeout=fn_args.get("timeout", 60),
-                        )
+                        if (_exec_cfg.get("mode") or "disabled") != "device":
+                            _remote_result = await _run_remote(_uid, "member", _remote_command, timeout=fn_args.get("timeout", 60))
                         tool_result = {
                             "stdout": _remote_result.get("stdout", ""),
                             "stderr": _remote_result.get("stderr", ""),
