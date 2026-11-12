@@ -54,3 +54,14 @@ def test_run_without_ssh_config_denied(tmp_exec):
     import asyncio
     with pytest.raises(PermissionError):
         asyncio.run(ex.run_remote("user_y", "member", "echo hi"))
+
+
+def test_member_hostname_rejects_private_dns_resolution(monkeypatch):
+    monkeypatch.setattr(ex.socket, "getaddrinfo", lambda *args, **kwargs: [(2, 1, 6, "", ("10.0.0.9", 22))])
+    with pytest.raises(ValueError):
+        ex.validate_target("public.example", "member", 22)
+
+
+def test_member_hostname_returns_validated_public_ip(monkeypatch):
+    monkeypatch.setattr(ex.socket, "getaddrinfo", lambda *args, **kwargs: [(2, 1, 6, "", ("8.8.8.8", 22))])
+    assert ex.validate_target("public.example", "member", 22) == "8.8.8.8"

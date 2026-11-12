@@ -13,6 +13,7 @@ import platform
 import secrets
 import subprocess
 import sys
+import threading
 import tempfile
 import time
 import urllib.error
@@ -59,6 +60,43 @@ def pair(server: str, code: str, name: str = "此设备") -> dict:
     return result
 
 
+def _run_bounded(argv: list[str], timeout: int, cwd: str) -> dict:
+    proc = subprocess.Popen(
+        argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd,
+        creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0),
+        start_new_session=(os.name != "nt"),
+    )
+    outputs = {"stdout": bytearray(), "stderr": bytearray()}
+
+    def drain(stream, key):
+        while True:
+            chunk = stream.read(8192)
+            if not chunk:
+                break
+            outputs[key].extend(chunk)
+            excess = len(outputs[key]) - MAX_OUTPUT
+            if excess > 0:
+                del outputs[key][:excess]
+
+    readers = [threading.Thread(target=drain, args=(proc.stdout, "stdout"), daemon=True),
+               threading.Thread(target=drain, args=(proc.stderr, "stderr"), daemon=True)]
+    for reader in readers: reader.start()
+    try:
+        code = proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=5)
+        else:
+            import signal
+            try: os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError: pass
+        proc.wait()
+        for reader in readers: reader.join(timeout=2)
+        return {"exit_code":124,"stdout":outputs["stdout"].decode("utf-8","replace"),"stderr":"任务超时"}
+    for reader in readers: reader.join(timeout=2)
+    return {"exit_code":int(code),"stdout":outputs["stdout"].decode("utf-8","replace"),"stderr":outputs["stderr"].decode("utf-8","replace")}
+
+
 def _execute(job: dict, auto_approve: bool = False) -> dict:
     kind = job.get("kind")
     command = str(job.get("command") or "")
@@ -74,23 +112,16 @@ def _execute(job: dict, auto_approve: bool = False) -> dict:
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 handle.write(command)
-            argv = [sys.executable, path]
-            result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=str(Path.home()))
+            result = _run_bounded([sys.executable, path], timeout, str(Path.home()))
         finally:
             Path(path).unlink(missing_ok=True)
     elif kind == "shell":
-        if os.name == "nt":
-            argv = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command]
-        else:
-            argv = ["/bin/sh", "-lc", command]
-        result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, cwd=str(Path.home()))
+        argv = (["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command]
+                if os.name == "nt" else ["/bin/sh", "-lc", command])
+        result = _run_bounded(argv, timeout, str(Path.home()))
     else:
         return {"exit_code": 2, "stdout": "", "stderr": f"unsupported task kind: {kind}"}
-    return {
-        "exit_code": int(result.returncode),
-        "stdout": (result.stdout or "")[-MAX_OUTPUT:],
-        "stderr": (result.stderr or "")[-MAX_OUTPUT:],
-    }
+    return result
 
 
 def run(auto_approve: bool = False, poll_wait: int = 20):
@@ -106,7 +137,11 @@ def run(auto_approve: bool = False, poll_wait: int = 20):
             continue
         job_id = job["job_id"]
         try:
-            result = _execute(job, auto_approve=auto_approve)
+            expires_at = float(job.get("expires_at") or 0)
+            if expires_at and time.time() >= expires_at:
+                result = {"exit_code": 124, "stdout": "", "stderr": "任务已过期，未在本机执行"}
+            else:
+                result = _execute(job, auto_approve=auto_approve)
         except subprocess.TimeoutExpired as exc:
             result = {"exit_code": 124, "stdout": str(exc.stdout or "")[-MAX_OUTPUT:], "stderr": "任务超时"}
         except Exception as exc:

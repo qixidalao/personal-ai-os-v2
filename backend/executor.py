@@ -15,12 +15,12 @@ import os
 import re
 import shlex
 import socket
-import base64
 from pathlib import Path
 from typing import Any
 
 EXEC_ROOT = Path("storage/users")
 MAX_OUTPUT = 200_000
+MAX_REMOTE_FILE_BYTES = 12 * 1024 * 1024
 DEFAULT_TIMEOUT = 60
 MAX_TIMEOUT = 300
 BLOCKED_HOSTNAMES = {
@@ -32,23 +32,31 @@ BLOCKED_HOSTNAMES = {
 }
 
 
-def _user_dir(user_id: str) -> Path:
+def _user_dir(user_id: str, *, create: bool = False) -> Path:
     safe = re.sub(r"[^A-Za-z0-9_.-]", "_", user_id or "unknown")
     path = EXEC_ROOT / safe
-    path.mkdir(parents=True, exist_ok=True)
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
     return path
 
 
-def _config_path(user_id: str) -> Path:
-    return _user_dir(user_id) / "executor.json"
+def _config_path(user_id: str, *, create: bool = False) -> Path:
+    directory = _user_dir(user_id, create=create)
+    return directory / "executor.json"
 
 
-def _key_path(user_id: str) -> Path:
-    return _user_dir(user_id) / "ssh" / "id_ed25519"
+def _key_path(user_id: str, *, create: bool = False) -> Path:
+    base = _user_dir(user_id, create=create) / "ssh"
+    if create:
+        base.mkdir(parents=True, exist_ok=True)
+    return base / "id_ed25519"
 
 
-def _known_hosts_path(user_id: str) -> Path:
-    return _user_dir(user_id) / "ssh" / "known_hosts"
+def _known_hosts_path(user_id: str, *, create: bool = False) -> Path:
+    base = _user_dir(user_id, create=create) / "ssh"
+    if create:
+        base.mkdir(parents=True, exist_ok=True)
+    return base / "known_hosts"
 
 
 def default_config(role: str) -> dict[str, Any]:
@@ -74,15 +82,14 @@ def load_config(user_id: str, role: str) -> dict[str, Any]:
 
 
 def save_config(user_id: str, cfg: dict[str, Any]) -> None:
-    path = _config_path(user_id)
+    path = _config_path(user_id, create=True)
     path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     try:
         os.chmod(path, 0o600)
     except OSError:
         pass
     host_key = str((cfg.get("ssh") or {}).get("host_key") or "").strip()
-    kh = _known_hosts_path(user_id)
-    kh.parent.mkdir(parents=True, exist_ok=True)
+    kh = _known_hosts_path(user_id, create=True)
     kh.write_text(host_key + ("\n" if host_key else ""), encoding="utf-8")
     try:
         os.chmod(kh, 0o600)
@@ -91,8 +98,7 @@ def save_config(user_id: str, cfg: dict[str, Any]) -> None:
 
 
 def ensure_keypair(user_id: str) -> str:
-    key = _key_path(user_id)
-    key.parent.mkdir(parents=True, exist_ok=True)
+    key = _key_path(user_id, create=True)
     if not key.exists():
         import subprocess
 
@@ -130,36 +136,40 @@ def _is_public_ip(ip: str) -> bool:
 
 
 def validate_target(host: str, role: str, port: int = 22) -> str:
-    """校验远程目标；member 必须是公网地址；owner 允许本机/内网。"""
+    """Validate the SSH target. Members may use public addresses only."""
     host = (host or "").strip()
     if not host:
         raise ValueError("请填写远程服务器地址")
     if len(host) > 253 or any(c in host for c in " /\\\t\r\n"):
         raise ValueError("服务器地址格式不正确")
     hostname = host.strip("[]").lower()
-    if role != "owner":
-        if hostname in BLOCKED_HOSTNAMES:
-            raise ValueError("该地址不允许（本机/元数据地址）")
-        try:
-            literal = ipaddress.ip_address(hostname)
-        except ValueError:
-            literal = None
-        if literal is not None and not _is_public_ip(str(literal)):
-            raise ValueError("普通账号只能使用公网服务器地址")
+    if role != "owner" and hostname in BLOCKED_HOSTNAMES:
+        raise ValueError("该地址不允许（本机/元数据地址）")
     try:
-        infos = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
-    except OSError as exc:
-        raise ValueError(f"无法解析服务器地址: {exc}") from exc
-    addresses = {item[4][0] for item in infos}
-    if role != "owner":
-        for ip in addresses:
-            if not _is_public_ip(ip):
-                raise ValueError("普通账号只能使用公网服务器地址")
-    return hostname
+        literal = ipaddress.ip_address(hostname)
+    except ValueError:
+        literal = None
+    if literal is not None:
+        addresses = {str(literal)}
+    else:
+        try:
+            infos = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
+        except OSError as exc:
+            raise ValueError(f"无法解析服务器地址: {exc}") from exc
+        addresses = {item[4][0] for item in infos}
+    if not addresses:
+        raise ValueError("服务器地址未解析到 IP")
+    if role != "owner" and any(not _is_public_ip(ip) for ip in addresses):
+        raise ValueError("普通账号只能使用公网服务器地址")
+    # Pin the validated address for the SSH process. Passing the hostname would trigger
+    # another DNS lookup after validation and permit DNS rebinding to private networks.
+    return sorted(addresses)[0] if role != "owner" and literal is None else hostname
 
 
-def _ssh_args(user_id: str, cfg: dict[str, Any]) -> list[str]:
+def _ssh_args(user_id: str, cfg: dict[str, Any], role: str = "member") -> list[str]:
     ssh = cfg.get("ssh") or {}
+    original_host = str(ssh.get("host") or "").strip().lower().strip("[]")
+    host = validate_target(original_host, role, int(ssh.get("port") or 22))
     key = _key_path(user_id)
     if not key.exists():
         raise ValueError("SSH 密钥未生成，请先调用 /api/v1/executor/ssh-key")
@@ -173,14 +183,15 @@ def _ssh_args(user_id: str, cfg: dict[str, Any]) -> list[str]:
         "-o", "BatchMode=yes",
         "-o", "StrictHostKeyChecking=yes",
         "-o", f"UserKnownHostsFile={_known_hosts_path(user_id)}",
+        *(["-o", f"HostKeyAlias={original_host}"] if original_host != host else []),
         "-o", "ConnectTimeout=8",
         "-o", "ServerAliveInterval=15",
-        f"{ssh.get('user') or 'aios'}@{ssh.get('host')}",
+        f"{ssh.get('user') or 'aios'}@{host}",
     ]
 
 
-async def _ssh_exec(user_id: str, cfg: dict[str, Any], remote_cmd: str, timeout: int) -> dict[str, Any]:
-    args = _ssh_args(user_id, cfg) + [remote_cmd]
+async def _ssh_exec(user_id: str, cfg: dict[str, Any], remote_cmd: str, timeout: int, role: str = "member") -> dict[str, Any]:
+    args = _ssh_args(user_id, cfg, role) + [remote_cmd]
     proc = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE,
@@ -210,6 +221,7 @@ async def test_connection(user_id: str, role: str, cfg: dict[str, Any] | None = 
         user_id, cfg,
         "uname -s; docker --version 2>/dev/null || podman --version 2>/dev/null; echo AIOS_OK",
         timeout=min(int((cfg.get("limits") or {}).get("timeout") or DEFAULT_TIMEOUT), MAX_TIMEOUT),
+        role=role,
     )
     result["mode"] = "ssh"
     return result
@@ -225,16 +237,34 @@ async def remote_storage_mode(user_id: str, role: str) -> tuple[str, str]:
     return "local", path
 
 
+async def _ssh_binary(user_id: str, cfg: dict[str, Any], remote_cmd: str, payload: bytes | None, timeout: int, role: str = "member") -> tuple[int, bytes, bytes]:
+    args = _ssh_args(user_id, cfg, role) + [remote_cmd]
+    proc = await asyncio.create_subprocess_exec(
+        *args, stdin=asyncio.subprocess.PIPE if payload is not None else asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(payload), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill(); await proc.wait()
+        raise TimeoutError(f"SSH 文件传输超时（{timeout}s）")
+    return int(proc.returncode or 0), stdout, stderr
+
+
 async def remote_write_bytes(user_id: str, role: str, relative_path: str, content: bytes, timeout: int = 60) -> dict[str, Any]:
     mode, root = await remote_storage_mode(user_id, role)
     if mode != "remote":
         raise PermissionError("用户未启用远程存储")
+    if len(content) > MAX_REMOTE_FILE_BYTES:
+        raise ValueError(f"远程单文件上限为 {MAX_REMOTE_FILE_BYTES // (1024*1024)}MB")
     safe = "/".join(part for part in relative_path.split("/") if part not in ("", ".", ".."))
     if not safe:
         raise ValueError("远程存储路径为空")
-    encoded = base64.b64encode(content).decode("ascii")
-    command = f"mkdir -p {shlex.quote(root.rstrip('/') + '/' + safe.rsplit('/', 1)[0] if '/' in safe else root)} && echo {shlex.quote(encoded)} | base64 -d > {shlex.quote(root.rstrip('/') + '/' + safe)}"
-    return await _ssh_exec(user_id, load_config(user_id, role), command, timeout)
+    target = root.rstrip("/") + "/" + safe
+    parent = target.rsplit("/", 1)[0] if "/" in safe else root
+    command = f"mkdir -p {shlex.quote(parent)} && cat > {shlex.quote(target)}"
+    code, stdout, stderr = await _ssh_binary(user_id, load_config(user_id, role), command, content, timeout, role=role)
+    return {"ok": code == 0, "exit_code": code, "stdout": stdout.decode("utf-8", "replace")[:MAX_OUTPUT], "stderr": stderr.decode("utf-8", "replace")[:MAX_OUTPUT]}
 
 
 async def remote_read_bytes(user_id: str, role: str, relative_path: str, timeout: int = 60) -> bytes:
@@ -244,11 +274,13 @@ async def remote_read_bytes(user_id: str, role: str, relative_path: str, timeout
     safe = "/".join(part for part in relative_path.split("/") if part not in ("", ".", ".."))
     if not safe:
         raise ValueError("远程存储路径为空")
-    command = f"base64 -w0 {shlex.quote(root.rstrip('/') + '/' + safe)}"
-    result = await _ssh_exec(user_id, load_config(user_id, role), command, timeout)
-    if not result.get("ok"):
-        raise FileNotFoundError(result.get("stderr") or "远程文件不存在")
-    return base64.b64decode(result.get("stdout", ""), validate=False)
+    target = root.rstrip("/") + "/" + safe
+    code, stdout, stderr = await _ssh_binary(user_id, load_config(user_id, role), f"cat -- {shlex.quote(target)}", None, timeout, role=role)
+    if code != 0:
+        raise FileNotFoundError(stderr.decode("utf-8", "replace")[:MAX_OUTPUT] or "远程文件不存在")
+    if len(stdout) > MAX_REMOTE_FILE_BYTES:
+        raise ValueError(f"远程文件超过读取上限 {MAX_REMOTE_FILE_BYTES // (1024*1024)}MB")
+    return stdout
 
 
 async def run_remote(user_id: str, role: str, command: str, timeout: int | None = None) -> dict[str, Any]:
@@ -271,6 +303,6 @@ async def run_remote(user_id: str, role: str, command: str, timeout: int | None 
         f"--workdir /workspace "
         f"{shlex.quote(image)} sh -lc {shlex.quote(command)}"
     )
-    result = await _ssh_exec(user_id, cfg, docker_cmd, timeout=ttl + 10)
+    result = await _ssh_exec(user_id, cfg, docker_cmd, timeout=ttl + 10, role=role)
     result["mode"] = "ssh"
     return result

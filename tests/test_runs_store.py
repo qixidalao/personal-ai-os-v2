@@ -378,3 +378,13 @@ def test_concurrent_create_runs(store: RunStore) -> None:
         snapshot = store.get_run(run["id"])
         assert snapshot is not None
         assert [event["seq"] for event in snapshot["events"]] == [1, 2, 3, 4, 5]
+
+
+def test_audit_args_redact_sensitive_values_but_preserve_hash(store: RunStore) -> None:
+    args = {"api_key": "secret-value", "nested": {"password": "pw", "query": "hello"}}
+    store.create_run("run-redact", "s", "m")
+    call = store.create_tool_call("call-redact", "run-redact", "tool", args)
+    assert call["args"]["api_key"] == "[REDACTED]"
+    assert call["args"]["nested"]["password"] == "[REDACTED]"
+    assert call["args"]["nested"]["query"] == "hello"
+    assert call["args_hash"] == args_hash(args)

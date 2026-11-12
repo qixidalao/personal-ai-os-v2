@@ -8,6 +8,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from pathlib import Path
 import json
+import re
 import uuid
 from datetime import datetime
 
@@ -70,8 +71,22 @@ class SessionData(BaseModel):
     messages: list[Message] = []
 
 
+_SESSION_ID_RE = re.compile(r"s[a-z0-9]{8}\Z")
+
+
+def _validated_session_id(session_id: str) -> str:
+    if not isinstance(session_id, str) or not _SESSION_ID_RE.fullmatch(session_id):
+        raise HTTPException(status_code=422, detail="Invalid session id")
+    return session_id
+
+
 def _session_path(session_id: str) -> Path:
-    return STORAGE_DIR / f"{session_id}.json"
+    safe_id = _validated_session_id(session_id)
+    path = (STORAGE_DIR / f"{safe_id}.json").resolve()
+    root = STORAGE_DIR.resolve()
+    if not path.is_relative_to(root):
+        raise HTTPException(status_code=422, detail="Invalid session id")
+    return path
 
 
 def _read_session(session_id: str) -> SessionData:
@@ -140,7 +155,7 @@ async def list_sessions(request: Request):
 async def create_session(request: Request, meta: SessionMeta | None = None):
     user_id, role = identity(request)
     now = datetime.now().isoformat()
-    session_id = meta.id if meta and meta.id else f"s{uuid.uuid4().hex[:8]}"
+    session_id = _validated_session_id(meta.id) if meta and meta.id else f"s{uuid.uuid4().hex[:8]}"
     if meta is None:
         meta = SessionMeta(id=session_id, title="新对话", time=now, created_at=now, updated_at=now)
     else:

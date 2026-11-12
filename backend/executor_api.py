@@ -102,7 +102,18 @@ async def put_config(request: Request):
     if mode == "device":
         device_id = str(data.get("device_id") or cfg.get("device_id") or "").strip()
         if not device_id:
-            raise HTTPException(status_code=422, detail="请先配对本机设备")
+            raise HTTPException(status_code=422, detail="请先选择已配对的本机设备")
+        from backend.device_api import _connect as _device_connect
+        device_conn = _device_connect()
+        try:
+            device = device_conn.execute(
+                "SELECT device_id FROM devices WHERE device_id=? AND user_id=? AND revoked=0",
+                (device_id, user_id),
+            ).fetchone()
+        finally:
+            device_conn.close()
+        if not device:
+            raise HTTPException(status_code=422, detail="本机设备不存在、已撤销或不属于当前账号")
         cfg["device_id"] = device_id
     cfg["mode"] = mode
     if isinstance(data.get("storage"), dict):

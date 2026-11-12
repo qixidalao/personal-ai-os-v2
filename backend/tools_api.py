@@ -74,6 +74,25 @@ def _settings_tool_map() -> dict[str, dict[str, Any]]:
     return result
 
 
+_SENSITIVE_ARG_KEYS = ("key", "token", "password", "secret", "authorization", "cookie", "credential")
+
+
+def _redact_sensitive_args(value: Any) -> str:
+    def scrub(item: Any) -> Any:
+        if isinstance(item, dict):
+            return {
+                str(k): "[REDACTED]" if any(marker in str(k).lower() for marker in _SENSITIVE_ARG_KEYS) else scrub(v)
+                for k, v in item.items()
+            }
+        if isinstance(item, list):
+            return [scrub(v) for v in item]
+        return item
+    try:
+        return json.dumps(scrub(value), ensure_ascii=False)
+    except Exception:
+        return "[unserializable args]"
+
+
 def _jsonable(value: Any) -> Any:
     """把工具返回转成 JSON 可序列化结构。"""
     try:
@@ -251,6 +270,8 @@ async def call_tool(payload: ToolCallCompatRequest):
                 or record.get("args_hash") != args_hash(args)
             ):
                 raise HTTPException(status_code=403, detail="审批无效、已过期或参数不匹配")
+            if not approval_store.consume(payload.approval_id):
+                raise HTTPException(status_code=409, detail="该审批已被使用或正在执行")
             used_approval = payload.approval_id
         else:
             record = approval_store.create(
@@ -273,11 +294,9 @@ async def call_tool(payload: ToolCallCompatRequest):
                 },
             )
 
-    logger.info(f"🛠️ POST /api/v1/tools/call → {name} args={json.dumps(args, ensure_ascii=False)}")
+    logger.info(f"🛠️ POST /api/v1/tools/call → {name} args={_redact_sensitive_args(args)}")
     try:
         result = await asyncio.to_thread(ToolRegistry.call, name, **args)
-        if used_approval:
-            approval_store.consume(used_approval)
         logger.info(f"✅ {name} 调用成功 result_len={len(str(result))}")
         return {
             "ok": True,

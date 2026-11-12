@@ -136,6 +136,22 @@ def _normalize_args(args: Any) -> Any:
     return args
 
 
+_SENSITIVE_ARG_MARKERS = ("key", "token", "password", "secret", "authorization", "cookie", "credential")
+
+
+def _redact_audit_args(value: Any) -> Any:
+    """Redact credential-like fields before persisting or exporting run audit data."""
+    if isinstance(value, dict):
+        return {
+            str(key): "[REDACTED]" if any(marker in str(key).lower() for marker in _SENSITIVE_ARG_MARKERS)
+            else _redact_audit_args(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_audit_args(item) for item in value]
+    return value
+
+
 def canonical_json(value: Any) -> str:
     """规范化 JSON：key 排序、紧凑分隔符、中文不转义 —— 保证同参数同 hash。"""
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
@@ -354,6 +370,7 @@ class RunStore:
             args = {}
         canonical_args = canonical_json(_normalize_args(args))
         digest = hashlib.sha256(canonical_args.encode("utf-8")).hexdigest()
+        audit_args = canonical_json(_redact_audit_args(_normalize_args(args)))
         started_at = self._now()
         finished_at = self._now() if status in TOOL_CALL_TERMINAL_STATUSES else None
         with self._lock, self._require_conn() as conn:
@@ -371,7 +388,7 @@ class RunStore:
                         call_id,
                         run_id,
                         name,
-                        canonical_args,
+                        audit_args,
                         digest,
                         status,
                         permission,

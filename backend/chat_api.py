@@ -768,7 +768,7 @@ async def _stream_events(req: ChatRequest, request_id: str, request: Request | N
             yield {"type": "tool_call_start", "id": tool_id, "run_id": run_id,
                    "round": round_idx + 1, "name": fn_name or "unknown_tool", "args": fn_args}
 
-            logger.info(f"🛠️ Round {round_idx + 1}: LLM 调用工具 {fn_name} args={fn_args}")
+            logger.info(f"🛠️ Round {round_idx + 1}: LLM 调用工具 {fn_name} (args omitted)")
             started = time.perf_counter()
             ok = True
             error = ""
@@ -795,28 +795,37 @@ async def _stream_events(req: ChatRequest, request_id: str, request: Request | N
                             raise PermissionError("该工具暂不支持普通账号的远程执行")
                         from backend.executor import load_config as _load_exec, run_remote as _run_remote
                         _exec_cfg = _load_exec(_uid, "member")
-                        if (_exec_cfg.get("mode") or "disabled") == "device":
-                            from backend.device_api import run_on_user_device as _run_device
-                            _device_cmd = str(fn_args.get("command") or "").strip() if fn_name == "shell_exec" else str(fn_args.get("code") or "")
-                            if fn_name == "python_exec":
-                                _device_cmd = _device_cmd
-                            _remote_result = await _run_device(_uid, str(_exec_cfg.get("device_id") or ""), _device_cmd, "shell" if fn_name == "shell_exec" else "python", int(fn_args.get("timeout",60)))
-                        elif fn_name == "shell_exec":
-                            _remote_command = str(fn_args.get("command") or "").strip()
+                        _mode = _exec_cfg.get("mode") or "disabled"
+                        _timeout = int(fn_args.get("timeout", 60))
+                        if fn_name == "shell_exec":
+                            _command = str(fn_args.get("command") or "").strip()
                         else:
-                            _remote_command = "python3 - <<'AIOS_PYTHON\n" + str(fn_args.get("code") or "") + "\nAIOS_PYTHON"
-                        if (_exec_cfg.get("mode") or "disabled") != "device" and not _remote_command:
+                            _command = str(fn_args.get("code") or "")
+                        if not _command:
                             raise ValueError("执行内容为空")
-                        if (_exec_cfg.get("mode") or "disabled") != "device":
-                            _remote_result = await _run_remote(_uid, "member", _remote_command, timeout=fn_args.get("timeout", 60))
+                        if _mode == "device":
+                            from backend.device_api import run_on_user_device as _run_device
+                            _remote_result = await _run_device(
+                                _uid, str(_exec_cfg.get("device_id") or ""), _command,
+                                "shell" if fn_name == "shell_exec" else "python", _timeout,
+                            )
+                            _executor_mode = "device"
+                        elif _mode == "ssh":
+                            _remote_command = _command if fn_name == "shell_exec" else (
+                                "python3 - <<'AIOS_PYTHON\n" + _command + "\nAIOS_PYTHON"
+                            )
+                            _remote_result = await _run_remote(_uid, "member", _remote_command, timeout=_timeout)
+                            _executor_mode = "ssh"
+                        else:
+                            raise PermissionError("当前账号未配置可用的 SSH 或本机设备执行器")
                         tool_result = {
                             "stdout": _remote_result.get("stdout", ""),
                             "stderr": _remote_result.get("stderr", ""),
                             "return_code": _remote_result.get("exit_code"),
                             "success": bool(_remote_result.get("ok")),
-                            "sandbox": "remote-docker",
+                            "sandbox": "device-agent" if _executor_mode == "device" else "remote-docker",
                             "error": _remote_result.get("stderr") if not _remote_result.get("ok") else None,
-                            "mode": "ssh",
+                            "mode": _executor_mode,
                         }
                     else:
                         async with _TOOL_EXEC_SEM:

@@ -13,6 +13,7 @@ import json
 import secrets
 import sqlite3
 import time
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,10 @@ from backend.ownership import identity
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 DB_PATH = Path("storage/devices.db")
+PAIR_FAILURE_WINDOW = 300
+PAIR_FAILURE_LIMIT = 10
+_pair_failures: dict[str, deque[float]] = defaultdict(deque)
+_pair_lock = asyncio.Lock()
 
 
 def _connect() -> sqlite3.Connection:
@@ -83,7 +88,8 @@ def _agent(request: Request) -> dict[str, Any]:
 @router.post("/pairing-code")
 async def create_pairing_code(request: Request):
     user_id, _ = _user(request)
-    code = f"{secrets.randbelow(1_000_000):06d}"
+    # 80-bit one-time secret; copied from the authenticated UI to the local agent.
+    code = secrets.token_urlsafe(10)
     now = time.time()
     c = _connect()
     try:
@@ -105,15 +111,30 @@ async def pair_device(request: Request):
     code = str(data.get("pairing_code") or "").strip()
     name = str(data.get("name") or "我的设备").strip()[:100]
     platform = str(data.get("platform") or "unknown").strip()[:100]
-    if len(code) != 6 or not code.isdigit():
-        raise HTTPException(status_code=422, detail="配对码应为 6 位数字")
+    if len(code) > 64 or not code:
+        raise HTTPException(status_code=422, detail="配对码格式不正确")
+    client_ip = request.client.host if request.client else "unknown"
     now = time.time()
+    async with _pair_lock:
+        failures = _pair_failures[client_ip]
+        while failures and now - failures[0] > PAIR_FAILURE_WINDOW:
+            failures.popleft()
+        if len(failures) >= PAIR_FAILURE_LIMIT:
+            raise HTTPException(status_code=429, detail="配对尝试过多，请稍后再试")
     c = _connect()
     try:
         c.execute("BEGIN IMMEDIATE")
         row = c.execute("SELECT * FROM pair_codes WHERE code_hash=? AND expires_at>=?", (_hash(code), now)).fetchone()
         if not row:
+            c.rollback()
+            async with _pair_lock:
+                failures = _pair_failures[client_ip]
+                while failures and now - failures[0] > PAIR_FAILURE_WINDOW:
+                    failures.popleft()
+                failures.append(now)
             raise HTTPException(status_code=401, detail="配对码错误、过期或已使用")
+        async with _pair_lock:
+            _pair_failures[client_ip].clear()
         user_id = row["user_id"]
         c.execute("DELETE FROM pair_codes WHERE code_hash=?", (_hash(code),))
         device_id = f"dev_{secrets.token_hex(12)}"
@@ -168,7 +189,7 @@ async def agent_next_job(request: Request, wait: int = 20):
                 c.execute("UPDATE device_jobs SET status='running',claimed_at=? WHERE job_id=? AND status='queued'",
                           (time.time(),row["job_id"]))
                 c.commit()
-                return {"job":{"job_id":row["job_id"],"kind":row["kind"],"command":row["command"],"timeout":row["timeout"]}}
+                return {"job":{"job_id":row["job_id"],"kind":row["kind"],"command":row["command"],"timeout":row["timeout"],"expires_at":row["created_at"] + row["timeout"] + 5}}
             c.commit()
         finally:
             c.close()
@@ -181,9 +202,18 @@ async def agent_next_job(request: Request, wait: int = 20):
 async def agent_job_result(job_id: str, request: Request):
     device = _agent(request)
     try:
-        data = await request.json()
-    except Exception:
-        data = {}
+        length = int(request.headers.get("content-length") or "0")
+    except ValueError:
+        length = 0
+    if length > 450_000:
+        raise HTTPException(status_code=413, detail="设备任务结果超出大小上限")
+    raw = await request.body()
+    if len(raw) > 450_000:
+        raise HTTPException(status_code=413, detail="设备任务结果超出大小上限")
+    try:
+        data = json.loads(raw or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=400, detail="设备任务结果不是有效 JSON")
     stdout = str(data.get("stdout") or "")[:200_000]
     stderr = str(data.get("stderr") or "")[:200_000]
     try:

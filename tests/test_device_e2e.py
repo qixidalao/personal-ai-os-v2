@@ -46,3 +46,30 @@ def test_paired_agent_receives_only_own_job_and_revokes(tmp_path, monkeypatch):
     monkeypatch.setattr(dev, '_user', lambda req: ('user-a','member'))
     assert client.delete(f'/api/v1/devices/{device_id}').status_code==200
     assert client.get('/api/v1/devices/agent/jobs/next',headers=agent_headers).status_code==401
+
+
+def test_pairing_code_failures_are_rate_limited(tmp_path, monkeypatch):
+    monkeypatch.setattr(dev, 'DB_PATH', tmp_path/'devices.db')
+    monkeypatch.setattr(dev, '_user', lambda req: ('user-a','member'))
+    app=FastAPI(); app.include_router(dev.router)
+    client=TestClient(app)
+    for _ in range(dev.PAIR_FAILURE_LIMIT):
+        response=client.post('/api/v1/devices/pair', json={'pairing_code':'wrong-code'})
+        assert response.status_code == 401
+    assert client.post('/api/v1/devices/pair', json={'pairing_code':'wrong-code'}).status_code == 429
+
+
+def test_agent_bounded_output_and_timeout():
+    import importlib.util
+    import sys
+    agent_path = ROOT / "scripts" / "aios-agent.py"
+    spec = importlib.util.spec_from_file_location("aios_agent", agent_path)
+    agent = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = agent
+    spec.loader.exec_module(agent)
+    big = agent._run_bounded([sys.executable, "-c", "import sys; print('x'*500000); print('e'*500000, file=sys.stderr)"], 5, str(ROOT))
+    assert big["exit_code"] == 0
+    assert len(big["stdout"].encode()) <= agent.MAX_OUTPUT
+    assert len(big["stderr"].encode()) <= agent.MAX_OUTPUT
+    timed = agent._run_bounded([sys.executable, "-c", "import time; time.sleep(2)"], 1, str(ROOT))
+    assert timed["exit_code"] == 124

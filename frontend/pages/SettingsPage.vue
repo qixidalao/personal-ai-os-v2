@@ -443,9 +443,8 @@
                 </div>
               </div>
               <div class="set-well">
-                <div class="set-stat-row"><span>本地数据</span><span>{{ storageUsed }}MB / {{ storageTotal }}MB</span></div>
-                <div class="set-stat-row"><span>会话数量</span><span>{{ sessionCount }}</span></div>
-                <div class="set-stat-row"><span>缓存大小</span><span>{{ cacheSize }}MB</span></div>
+                <div class="set-stat-row"><span>实例会话数量</span><span>{{ sessionCount }}</span></div>
+                <p class="acct-hint">磁盘占用和缓存统计尚未接入，不显示估算值。</p>
               </div>
             </section>
 
@@ -686,10 +685,15 @@
                     <code v-if="pairingCode" class="device-pair-code">{{ pairingCode }}</code>
                   </div>
                   <p v-if="pairingError" class="acct-msg">{{ pairingError }}</p>
+                  <div v-if="deviceOptions.length" class="acct-field">
+                    <div class="acct-label-row"><span class="acct-label">当前执行设备</span></div>
+                    <Dropdown :items="deviceOptions" :label="deviceLabel" @select="onSelectDevice" class="acct-dropdown" />
+                  </div>
+                  <p v-else class="acct-hint">尚无已配对在线设备。生成配对码并在本机运行 AIOS Agent 后，再回来选择设备。</p>
                 </div>
                 <div v-if="pairedDevices.length" class="device-list">
                   <div v-for="d in pairedDevices" :key="d.device_id" class="device-row">
-                    <span>{{ d.name }} · {{ d.platform }} · {{ d.online ? '在线' : '离线' }}</span>
+                    <span>{{ d.name }} · {{ d.platform }} · {{ d.online ? '在线' : '离线' }}<template v-if="d.device_id === selectedDeviceId"> · 当前执行器</template></span>
                     <button class="acct-btn acct-btn--ghost" :disabled="deviceBusy" @click="revokeDevice(d.device_id)">撤销</button>
                   </div>
                 </div>
@@ -965,10 +969,7 @@ async function apiPut(path: string, body: any) {
   if (!r.ok) throw new Error(await responseError(r, `PUT ${path} ${r.status}`))
   return r.json()
 }
-const storageUsed = ref(256)
-const storageTotal = ref(1024)
 const sessionCount = ref(0)
-const cacheSize = ref(128)
 const devMode = ref(false)
 const thinking = ref(false)
 const autoTools = ref(true)
@@ -1035,6 +1036,7 @@ const ttsVoiceOptions = ref<{ label: string; value: string }[]>([])
 const ttsVoice = ref('')
 const ttsRate = ref(1)
 const ttsPitch = ref(1)
+const resettingPersonalSettings = ref(false)
 const ttsVoiceLabel = computed(() => ttsVoiceOptions.value.find(o => o.value === ttsVoice.value)?.label || '系统默认')
 const securityLockout = ref(true)
 const securityRateLimit = ref(true)
@@ -1093,6 +1095,12 @@ const executorUser = ref('aios')
 const executorImage = ref('aios-runner:latest')
 const executorHostKey = ref('')
 const pairedDevices = ref<any[]>([])
+const selectedDeviceId = ref('')
+const deviceOptions = computed(() => pairedDevices.value.filter((d) => d.online && !d.revoked).map((d) => ({
+  label: `${d.name} · ${d.platform} · 在线`,
+  value: d.device_id,
+})))
+const deviceLabel = computed(() => deviceOptions.value.find((d) => d.value === selectedDeviceId.value)?.label || '选择已配对的在线设备')
 const pairingCode = ref('')
 const pairingError = ref('')
 const deviceBusy = ref(false)
@@ -1328,9 +1336,25 @@ function applySettings(data: any) {
 }
 
 async function nukeAll() {
-  showNuke.value = false; storageUsed.value = 0
-  try { const data = await apiPost('/api/v1/settings/reset'); applySettings(data.settings || data); alert('所有设置已重置为默认') }
-  catch (e) { console.warn('设置重置失败', e); alert('设置重置失败，请查看控制台') }
+  showNuke.value = false
+  try {
+    const data = await apiPost('/api/v1/settings/reset')
+    resettingPersonalSettings.value = true
+    applySettings(data.settings || data)
+    for (const key of [
+      'aios-tts-voice', 'aios-tts-source', 'aios-tts-api-type', 'aios-tts-endpoint',
+      'aios-tts-key', 'aios-tts-model', 'aios-tts-voice-id', 'aios-tts-ref',
+      'aios-tts-ref-name', 'aios-tts-instruction', 'aios-tts-use-ref',
+      'aios-tts-rate', 'aios-tts-pitch',
+    ]) localStorage.removeItem(key)
+    ttsVoice.value = ''; ttsSource.value = 'system'; ttsApiType.value = 'openai'
+    ttsEndpoint.value = ''; ttsKey.value = ''; ttsModel.value = ''; ttsVoiceId.value = ''
+    ttsRefUrl.value = ''; ttsRefName.value = ''; ttsInstruction.value = ''; ttsUseRef.value = false
+    ttsRate.value = 1; ttsPitch.value = 1
+    loadTtsVoices()
+    alert('个人设置与本机 TTS 凭据已重置为默认')
+    window.setTimeout(() => { resettingPersonalSettings.value = false }, 0)
+  } catch (e) { resettingPersonalSettings.value = false; console.warn('设置重置失败', e); alert('设置重置失败，请查看控制台') }
 }
 
 async function loadSettings() {
@@ -1638,6 +1662,7 @@ async function testTts() {
 }
 
 watch([ttsRate, ttsPitch, ttsSource, ttsApiType, ttsEndpoint, ttsKey, ttsModel, ttsVoiceId, ttsUseRef, ttsInstruction], () => {
+  if (resettingPersonalSettings.value) return
   try {
     localStorage.setItem('aios-tts-rate', String(ttsRate.value))
     localStorage.setItem('aios-tts-pitch', String(ttsPitch.value))
@@ -1751,6 +1776,7 @@ async function loadExecutor() {
     const data = await apiGet('/api/v1/executor/config')
     const cfg = data.config || {}
     executorMode.value = cfg.mode || 'disabled'
+    selectedDeviceId.value = cfg.device_id || ''
     executorHost.value = cfg.ssh?.host || ''
     executorPort.value = cfg.ssh?.port || 22
     executorUser.value = cfg.ssh?.user || 'aios'
@@ -1758,17 +1784,21 @@ async function loadExecutor() {
     storageMode.value = cfg.storage?.mode || 'local'
     previousStorageMode.value = storageMode.value
     isOwner.value = data.role === 'owner'
-    if (executorMode.value === 'device') await loadPairedDevices()
+    await loadPairedDevices()
   } catch (e: any) { executorMsg.value = `读取执行器配置失败：${e?.message || e}` }
 }
 
 async function saveExecutor() {
   executorBusy.value = true; executorMsg.value = ''
   try {
+    if (executorMode.value === 'device' && !pairedDevices.value.some((d) => d.device_id === selectedDeviceId.value && d.online)) {
+      throw new Error('请先选择一台已配对且在线的本机设备')
+    }
     const r = await fetch(`${API}/api/v1/executor/config`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         mode: executorMode.value,
+        device_id: selectedDeviceId.value,
         ssh: { host: executorHost.value, port: Number(executorPort.value) || 22, user: executorUser.value,
                image: executorImage.value, host_key: executorHostKey.value },
         storage: { mode: storageMode.value, path: '~/aios-data' },
@@ -1783,6 +1813,8 @@ async function saveExecutor() {
   } catch (e: any) { executorMsg.value = `保存失败：${e?.message || e}` }
   finally { executorBusy.value = false }
 }
+
+function onSelectDevice(item: any) { selectedDeviceId.value = item.value }
 
 function onSelectStorageMode(item: any) {
   const old = storageMode.value
@@ -1825,8 +1857,16 @@ async function keepLocalStorage() {
 }
 
 async function loadPairedDevices() {
-  try { const d = await apiGet('/api/v1/devices'); pairedDevices.value = d.devices || [] }
-  catch (e: any) { pairingError.value = e?.message || String(e) }
+  try {
+    const d = await apiGet('/api/v1/devices')
+    pairedDevices.value = d.devices || []
+    if (selectedDeviceId.value && !pairedDevices.value.some((device) => device.device_id === selectedDeviceId.value && !device.revoked)) {
+      selectedDeviceId.value = ''
+    }
+    if (!selectedDeviceId.value && executorMode.value === 'device') {
+      selectedDeviceId.value = pairedDevices.value.find((device) => device.online && !device.revoked)?.device_id || ''
+    }
+  } catch (e: any) { pairingError.value = e?.message || String(e) }
 }
 
 async function createDevicePairing() {
@@ -1847,6 +1887,12 @@ async function revokeDevice(id: string) {
     const r = await fetch(`${API}/api/v1/devices/${encodeURIComponent(id)}`, { method: 'DELETE' })
     const d = await r.json().catch(() => ({}))
     if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`)
+    if (selectedDeviceId.value === id) {
+      selectedDeviceId.value = ''
+      executorMode.value = 'disabled'
+      executorMsg.value = '当前执行设备已撤销；执行模式已停用，请保存配置。'
+      await saveExecutor()
+    }
     await loadPairedDevices()
   } catch (e: any) { pairingError.value = `撤销失败：${e?.message || e}` }
   finally { deviceBusy.value = false }

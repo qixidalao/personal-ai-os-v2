@@ -1,15 +1,31 @@
 <template>
   <div class="ai-dropdown" ref="triggerRef">
-    <div v-if="label" class="ai-dropdown__trigger ai-dropdown__trigger--label" @click.stop="toggleMenu">
+    <button
+      v-if="label"
+      type="button"
+      class="ai-dropdown__trigger ai-dropdown__trigger--label"
+      :aria-expanded="open"
+      aria-haspopup="listbox"
+      @click.stop="toggleMenu"
+      @keydown="onTriggerKeydown"
+    >
       <span>{{ label }}</span>
-      <span class="ai-dropdown__arrow" :class="{ up: open }">▾</span>
-    </div>
-    <div v-else class="ai-dropdown__trigger" @click.stop="toggleMenu">
+      <span class="ai-dropdown__arrow" :class="{ up: open }" aria-hidden="true">▾</span>
+    </button>
+    <button
+      v-else
+      type="button"
+      class="ai-dropdown__trigger"
+      :aria-expanded="open"
+      aria-haspopup="listbox"
+      @click.stop="toggleMenu"
+      @keydown="onTriggerKeydown"
+    >
       <slot name="trigger" />
-    </div>
+    </button>
     <Teleport to="body">
-      <div v-if="open" ref="menuRef" class="ai-dropdown__menu" :style="menuStyle" @click.stop>
-        <div v-for="(item, i) in items" :key="i" class="ai-dropdown__item" @click="select(item)">
+      <div v-if="open" ref="menuRef" class="ai-dropdown__menu" :style="menuStyle" role="listbox" tabindex="-1" @click.stop @keydown="onMenuKeydown">
+        <div v-for="(item, i) in items" :key="i" class="ai-dropdown__item" :class="{ focused: i === focusedIndex }" role="option" :aria-selected="i === focusedIndex" tabindex="-1" @click="select(item)" @mouseenter="focusedIndex = i">
           <span v-if="item.icon" class="ai-dropdown__item-icon">{{ item.icon }}</span>
           <div>
             <div class="ai-dropdown__item-label">{{ item.label }}</div>
@@ -27,6 +43,7 @@ import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 const props = defineProps<{ items: any[]; label?: string }>()
 const emit = defineEmits(['select'])
 const open = ref(false)
+const focusedIndex = ref(-1)
 const triggerRef = ref<HTMLElement>()
 const menuRef = ref<HTMLElement>()
 const menuStyle = ref<any>({})
@@ -45,8 +62,31 @@ function updateMenuPos() {
 }
 function onScrollRAF() { if (open.value) updateMenuPos() }
 function onScroll() { if (!open.value) return; if (rafId) cancelAnimationFrame(rafId); rafId = requestAnimationFrame(onScrollRAF) }
-function toggleMenu() { open.value = !open.value; if (open.value) nextTick(() => updateMenuPos()) }
-function select(item: any) { open.value = false; emit('select', item) }
+function toggleMenu() {
+  open.value = !open.value
+  if (open.value) {
+    focusedIndex.value = props.items.length ? 0 : -1
+    nextTick(() => { updateMenuPos(); menuRef.value?.focus() })
+  }
+}
+function select(item: any) { open.value = false; focusedIndex.value = -1; emit('select', item) }
+function onTriggerKeydown(event: KeyboardEvent) {
+  if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown') {
+    event.preventDefault(); if (!open.value) toggleMenu()
+  } else if (event.key === 'Escape' && open.value) { event.preventDefault(); open.value = false }
+}
+function onMenuKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') { event.preventDefault(); open.value = false; triggerRef.value?.focus(); return }
+  if (!props.items.length) return
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    const delta = event.key === 'ArrowDown' ? 1 : -1
+    focusedIndex.value = (focusedIndex.value + delta + props.items.length) % props.items.length
+  } else if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    if (focusedIndex.value >= 0) select(props.items[focusedIndex.value])
+  }
+}
 function onGlobalDown(e: MouseEvent) { if (!open.value) return; const target = e.target as Node; if (triggerRef.value?.contains(target)) return; if (menuRef.value?.contains(target)) return; open.value = false }
 watch(open, (val) => {
   if (val) { window.addEventListener('scroll', onScroll, true); window.addEventListener('resize', onScroll) }
@@ -57,5 +97,5 @@ onUnmounted(() => { window.removeEventListener('mousedown', onGlobalDown, true);
 </script>
 
 <style scoped>
-.ai-dropdown{position:relative;display:inline-flex}.ai-dropdown__trigger{cursor:pointer}.ai-dropdown__trigger--label{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border-light);color:var(--text);font-size:13px;min-width:140px;justify-content:space-between;transition:border .2s;user-select:none}.ai-dropdown__trigger--label:hover{border-color:var(--primary)}.ai-dropdown__arrow{font-size:10px;color:var(--text3);transition:transform .2s}.ai-dropdown__arrow.up{transform:rotate(180deg)}.ai-dropdown__menu{padding:4px 0;background:var(--surface);border:1px solid var(--border-light);border-radius:10px;overflow:hidden;z-index:9999;box-shadow:0 8px 30px rgba(0,0,0,.3)}.ai-dropdown__item{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;transition:background .15s;font-size:13px}.ai-dropdown__item:hover{background:var(--surface-alt)}.ai-dropdown__item-icon{width:20px;text-align:center}.ai-dropdown__item-label{color:var(--text)}.ai-dropdown__item-desc{font-size:11px;color:var(--text2)}
+.ai-dropdown{position:relative;display:inline-flex}.ai-dropdown__trigger{cursor:pointer;font:inherit}.ai-dropdown__trigger--label{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border-light);color:var(--text);font-size:13px;min-width:140px;justify-content:space-between;transition:border .2s;user-select:none}.ai-dropdown__trigger--label:hover{border-color:var(--primary)}.ai-dropdown__arrow{font-size:10px;color:var(--text3);transition:transform .2s}.ai-dropdown__arrow.up{transform:rotate(180deg)}.ai-dropdown__menu{padding:4px 0;background:var(--surface);border:1px solid var(--border-light);border-radius:10px;overflow:hidden;z-index:9999;box-shadow:0 8px 30px rgba(0,0,0,.3)}.ai-dropdown__item{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;transition:background .15s;font-size:13px}.ai-dropdown__item:hover,.ai-dropdown__item.focused{background:var(--surface-alt)}.ai-dropdown__item-icon{width:20px;text-align:center}.ai-dropdown__item-label{color:var(--text)}.ai-dropdown__item-desc{font-size:11px;color:var(--text2)}
 </style>
